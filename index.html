@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0E1114">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>TruckRoute</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
+<style>
+:root{
+  --chao:#0E1114; --painel:#161A1E; --campo:#1B1F24; --linha:#262B31; --linha2:#3A4148;
+  --texto:#F3F4F5; --texto2:#A7B0B9; --texto3:#9AA3AD;
+  --placa:#F2A900; --placa-esc:#14171A; --rota:#4C9BFF; --rota-esc:#1B6BE0;
+  --perigo:#E5533D; --ok:#6BCB77; --ok-fundo:#1F2A1F; --ok-borda:#3B6B42;
+  --topo:env(safe-area-inset-top,0px); --base:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--chao);color:var(--texto);font-family:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--placa);outline-offset:2px}
+.num{font-family:'Barlow Condensed','Barlow',sans-serif;font-weight:700;letter-spacing:.2px}
+.oculto{display:none!important}
+
+#mapa{position:fixed;inset:0;background:#12161A}
+
+/* Busca */
+#busca{position:fixed;left:12px;right:12px;top:calc(12px + var(--topo));z-index:5;display:flex;flex-direction:column;gap:8px}
+.caixa{background:var(--painel);border:1px solid var(--linha);border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+#busca form{display:flex;flex-direction:column;gap:0;padding:6px}
+.linha-campo{display:flex;align-items:center;gap:8px;padding:4px 6px}
+.linha-campo label{font-size:13px;color:var(--texto3);width:52px;flex-shrink:0}
+.linha-campo input{flex:1;min-width:0;height:44px;background:var(--campo);border:1px solid var(--linha);border-radius:12px;padding:0 12px;font-size:16px}
+.linha-campo input::placeholder{color:#7C868F}
+.acoes-busca{display:flex;gap:8px;padding:6px}
+.btn{min-height:48px;border-radius:14px;border:none;padding:0 18px;font-size:16px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn-placa{background:var(--placa);color:var(--placa-esc)}
+.btn-escuro{background:var(--campo);color:var(--texto);border:1.5px solid var(--linha2)}
+.btn-perigo{background:var(--perigo);color:#fff}
+.btn:disabled{opacity:.5}
+.link-btn{background:none;border:none;color:var(--placa);font-size:14px;font-weight:600;padding:8px 6px;min-height:40px}
+
+/* Faixas de navegação */
+#manobra{background:var(--rota-esc);border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:14px}
+#manobra .dist{font-size:32px;line-height:1}
+#manobra .txt{font-size:17px;font-weight:600;line-height:1.25}
+#aviso{border-radius:14px;padding:12px 14px;display:flex;gap:10px;align-items:flex-start;font-size:15px;line-height:1.35}
+#aviso.atencao{background:var(--placa);color:var(--placa-esc)}
+#aviso.bloqueio{background:var(--perigo);color:#fff}
+#aviso strong{display:block;font-size:16px}
+
+/* Botões flutuantes */
+#flutuantes{position:fixed;right:14px;z-index:4;display:flex;flex-direction:column;gap:10px;transition:bottom .2s}
+.fab{width:56px;height:56px;border-radius:28px;border:none;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.fab-claro{background:var(--texto);color:var(--placa-esc)}
+.fab-escuro{background:#1B1F24;border:1.5px solid var(--placa);color:var(--placa)}
+
+/* Painel inferior */
+#painel{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--painel);border-radius:22px 22px 0 0;padding:10px 16px calc(16px + var(--base));box-shadow:0 -8px 24px rgba(0,0,0,.4);max-height:62vh;overflow-y:auto}
+.puxador{width:40px;height:4px;border-radius:2px;background:var(--linha2);margin:0 auto 10px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:13px;font-weight:600;padding:6px 10px;border-radius:999px;background:#22282E;color:#D5DAE0;border:none}
+.resumo{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin:4px 0 12px}
+.resumo .grande{font-size:36px;line-height:1;color:var(--ok)}
+.resumo .sub{font-size:14px;color:var(--texto2);margin-top:2px}
+.dica{font-size:14px;color:var(--texto2);line-height:1.4;margin:10px 0 0}
+.progresso{height:6px;border-radius:3px;background:#22282E;overflow:hidden;margin:8px 0 4px}
+.progresso i{display:block;height:100%;width:0;background:var(--placa);transition:width .3s}
+.rotas{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.rota-op{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:var(--campo);border:2px solid var(--linha);text-align:left;width:100%}
+.rota-op[aria-pressed="true"]{border-color:var(--rota)}
+.rota-op .t{font-weight:700;font-size:16px}
+.rota-op .s{font-size:13px;color:var(--texto2)}
+.selo{font-size:12px;font-weight:700;padding:4px 8px;border-radius:999px;white-space:nowrap}
+.selo-ok{background:var(--ok);color:#10301A}
+.selo-atencao{background:var(--placa);color:var(--placa-esc)}
+.selo-bloqueio{background:var(--perigo);color:#fff}
+.selo-verif{background:#22282E;color:#D5DAE0}
+.duas{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+
+/* Modais */
+.modal{position:fixed;inset:0;z-index:20;background:rgba(5,7,9,.7);display:flex;align-items:flex-end}
+.modal>.folha{width:100%;max-height:92vh;overflow-y:auto;background:var(--chao);border-radius:22px 22px 0 0;padding:18px 16px calc(20px + var(--base))}
+.folha h2{margin:0 0 4px;font-family:'Barlow Condensed',sans-serif;font-size:30px}
+.folha p.sub{margin:0 0 14px;color:var(--texto2);font-size:15px}
+.grade2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.campo-num{display:flex;flex-direction:column;gap:4px;background:var(--campo);border-radius:12px;padding:10px 12px}
+.campo-num span{font-size:13px;color:var(--texto2)}
+.campo-num input,.campo-num select{background:transparent;border:none;font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:700;padding:0;width:100%}
+.campo-num select{font-size:22px}
+.campo-num select option{background:var(--painel)}
+.alternar{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--campo);border-radius:12px;padding:14px;margin-top:8px}
+.alternar input{width:26px;height:26px;accent-color:var(--placa)}
+.fonte{font-size:13px;color:var(--texto3);line-height:1.45;margin-top:12px}
+.tipos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tipo{min-height:96px;border-radius:16px;background:var(--campo);border:2px solid var(--linha);display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;padding:14px;text-align:left;font-weight:700;font-size:16px}
+.tipo[aria-pressed="true"]{border-color:var(--placa);background:#2A2410}
+.tipo svg{color:var(--placa)}
+.lista-alertas{display:flex;flex-direction:column;gap:8px}
+.alerta-item{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:14px;background:var(--campo);border:none;text-align:left;width:100%}
+.alerta-item .km{min-width:64px;font-size:20px}
+.alerta-item .t{font-weight:700}
+.alerta-item .d{font-size:13px;color:var(--texto2);margin-top:2px}
+
+#setup{position:fixed;inset:0;z-index:30;background:var(--chao);display:flex;align-items:center;justify-content:center;padding:24px}
+#setup .cartao{max-width:420px;width:100%;display:flex;flex-direction:column;gap:14px}
+#setup h1{margin:0;font-family:'Barlow Condensed',sans-serif;font-size:40px}
+#setup input{height:52px;background:var(--campo);border:1px solid var(--linha2);border-radius:12px;padding:0 14px;font-size:16px}
+#setup a{color:var(--placa)}
+.marca{display:flex;align-items:center;gap:10px}
+.marca i{width:40px;height:40px;border-radius:10px;background:var(--placa);display:flex;align-items:center;justify-content:center}
+
+#aviso-geral{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + var(--base));z-index:40;background:#F3F4F5;color:#14171A;font-weight:600;padding:12px 16px;border-radius:12px;max-width:92vw;font-size:15px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div id="mapa" role="application" aria-label="Mapa"></div>
+
+<!-- Primeira abertura: chave do Google -->
+<div id="setup" class="oculto">
+  <div class="cartao">
+    <div class="marca"><i><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#14171A" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg></i><h1>TruckRoute</h1></div>
+    <p class="sub" style="color:var(--texto2);margin:0">Para abrir o mapa, cole a chave da API do Google Maps. Ela fica salva só neste aparelho.</p>
+    <label for="campo-chave" style="font-size:14px;color:var(--texto2)">Chave da API do Google Maps</label>
+    <input id="campo-chave" autocomplete="off" spellcheck="false" placeholder="AIza...">
+    <button class="btn btn-placa" id="salvar-chave">Abrir o mapa</button>
+    <p class="fonte" id="erro-chave" role="alert"></p>
+    <p class="fonte">Não tem chave? O passo a passo está no arquivo LEIA-ME que veio com o app.</p>
+  </div>
+</div>
+
+<!-- Busca e faixas do topo -->
+<div id="busca">
+  <div class="caixa" id="caixa-busca">
+    <form id="form-rota" autocomplete="off">
+      <div class="linha-campo oculto" id="linha-origem"><label for="origem">Saída</label><input id="origem" placeholder="Minha localização"></div>
+      <div class="linha-campo"><label for="destino">Destino</label><input id="destino" placeholder="Cidade, empresa ou endereço" enterkeyhint="go"></div>
+      <div class="acoes-busca">
+        <button type="button" class="link-btn" id="mostrar-origem">Sair de outro lugar</button>
+        <span style="flex:1"></span>
+        <button type="submit" class="btn btn-placa" id="tracar">Traçar rota</button>
+      </div>
+    </form>
+  </div>
+  <div id="manobra" class="oculto" aria-live="polite">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V6"/><path d="M6 11l6-6 6 6"/></svg>
+    <div><div class="dist num" id="manobra-dist"></div><div class="txt" id="manobra-txt"></div></div>
+  </div>
+  <div id="aviso" class="oculto" role="alert">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:2px"><path d="M12 3l10 18H2z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg>
+    <div><strong id="aviso-titulo"></strong><span id="aviso-txt"></span></div>
+  </div>
+</div>
+
+<!-- Botões flutuantes -->
+<div id="flutuantes">
+  <button class="fab fab-claro" id="btn-voz" aria-label="Voz ligada" title="Voz"><svg id="ico-voz" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg></button>
+  <button class="fab fab-claro" id="btn-centro" aria-label="Centralizar no caminhão"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+  <button class="fab fab-escuro" id="btn-reportar" aria-label="Reportar restrição"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg></button>
+</div>
+
+<!-- Painel inferior -->
+<section id="painel" aria-label="Painel da viagem">
+  <div class="puxador"></div>
+
+  <div id="p-inicio">
+    <button class="chips" id="chips-veiculo" style="background:none;border:none;padding:0" aria-label="Editar veículo"></button>
+    <p class="dica" id="dica-inicio">Digite o destino ou toque no mapa. A rota é conferida contra a altura, o peso e o comprimento do seu conjunto.</p>
+    <div class="duas">
+      <button class="btn btn-escuro" id="btn-veiculo">Meu veículo</button>
+      <button class="btn btn-escuro" id="btn-instalar" hidden>Instalar app</button>
+    </div>
+  </div>
+
+  <div id="p-rota" class="oculto">
+    <div class="resumo">
+      <div><div class="grande num" id="r-tempo"></div><div class="sub" id="r-dist"></div></div>
+      <button class="link-btn" id="btn-alertas">Ver alertas</button>
+    </div>
+    <div id="r-status" class="dica" style="margin:0"></div>
+    <div class="progresso" id="r-prog"><i></i></div>
+    <div class="rotas" id="lista-rotas"></div>
+    <div class="duas">
+      <button class="btn btn-placa" id="btn-iniciar">Iniciar</button>
+      <button class="btn btn-escuro" id="btn-simular">Simular viagem</button>
+    </div>
+    <button class="link-btn" id="btn-limpar" style="margin-top:6px">Limpar rota</button>
+  </div>
+
+  <div id="p-nav" class="oculto">
+    <div class="resumo">
+      <div><div class="grande num" id="n-eta"></div><div class="sub" id="n-rest"></div></div>
+      <button class="link-btn" id="btn-alertas2">Alertas</button>
+    </div>
+    <div class="chips" id="chips-nav"></div>
+    <div class="duas">
+      <button class="btn btn-perigo" id="btn-encerrar">Encerrar</button>
+      <button class="btn btn-escuro" id="btn-reportar2">Reportar</button>
+    </div>
+  </div>
+</section>
+
+<!-- Modal: veículo -->
+<div class="modal oculto" id="m-veiculo" role="dialog" aria-modal="true" aria-labelledby="t-veiculo">
+  <form class="folha" id="form-veiculo">
+    <h2 id="t-veiculo">Meu veículo</h2>
+    <p class="sub">A rota e os alertas usam estes dados.</p>
+    <div class="grade2">
+      <label class="campo-num" style="grid-column:1/-1"><span>Tipo de conjunto</span>
+        <select id="v-tipo"><option value="truck">Truck</option><option value="carreta">Carreta</option><option value="bitrem">Bitrem</option><option value="rodotrem">Rodotrem</option><option value="vuc">VUC / toco</option></select></label>
+      <label class="campo-num"><span>Altura total (m)</span><input id="v-altura" inputmode="decimal" required></label>
+      <label class="campo-num"><span>Largura (m)</span><input id="v-largura" inputmode="decimal" required></label>
+      <label class="campo-num"><span>Comprimento (m)</span><input id="v-comprimento" inputmode="decimal" required></label>
+      <label class="campo-num"><span>PBT combinado (t)</span><input id="v-pbt" inputmode="decimal" required></label>
+    </div>
+    <label class="alternar"><span><strong>Produto perigoso</strong><br><span style="font-size:13px;color:var(--texto2)">Evita vias proibidas para carga perigosa</span></span><input type="checkbox" id="v-perigoso"></label>
+    <p class="fonte" id="info-bases"></p>
+    <div class="duas"><button type="button" class="btn btn-escuro" data-fechar>Cancelar</button><button type="submit" class="btn btn-placa">Salvar</button></div>
+  </form>
+</div>
+
+<!-- Modal: reportar -->
+<div class="modal oculto" id="m-reportar" role="dialog" aria-modal="true" aria-labelledby="t-rep">
+  <div class="folha">
+    <h2 id="t-rep">O que você viu?</h2>
+    <p class="sub" id="rep-local">No ponto onde você está agora.</p>
+    <div class="tipos" id="tipos-reporte"></div>
+    <div class="duas"><button class="btn btn-escuro" data-fechar>Cancelar</button><button class="btn btn-placa" id="enviar-reporte" disabled>Salvar reporte</button></div>
+    <p class="fonte">Nesta versão de teste, os reportes ficam salvos neste celular e entram nos alertas das suas próximas rotas.</p>
+  </div>
+</div>
+
+<!-- Modal: alertas da rota -->
+<div class="modal oculto" id="m-alertas" role="dialog" aria-modal="true" aria-labelledby="t-al">
+  <div class="folha">
+    <h2 id="t-al">Alertas na rota</h2>
+    <p class="sub" id="al-resumo"></p>
+    <div class="lista-alertas" id="lista-alertas"></div>
+    <p class="fonte">Altura, peso e vias proibidas vêm do OpenStreetMap e dos reportes de motoristas. A ANTT informa onde estão as pontes e viadutos das rodovias concedidas, mas não a altura livre. O app é um apoio: a sinalização da via sempre vale mais.</p>
+    <button class="btn btn-escuro" data-fechar style="width:100%;margin-top:8px">Fechar</button>
+  </div>
+</div>
+
+<div id="aviso-geral" class="oculto" role="status"></div>
+
+<script src="config.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
