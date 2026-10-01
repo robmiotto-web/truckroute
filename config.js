@@ -1,5 +1,6 @@
-// Cole aqui a sua chave da API do Google Maps (ou cole direto no app, na primeira abertura).
-// Restrinja a chave ao endereço do seu site no Google Cloud (veja LEIA-ME.md).
+// Configurações do TruckRoute. Tudo gratuito, sem chave e sem cartão.
 window.TRUCKROUTE_CONFIG = {
-  googleMapsApiKey: ""
+  estiloMapa: "https://tiles.openfreemap.org/styles/dark",   // mapa (OpenFreeMap)
+  rotas: "https://valhalla1.openstreetmap.de/route",          // rotas para caminhão (Valhalla/FOSSGIS)
+  busca: "https://nominatim.openstreetmap.org/search"          // busca de endereços (Nominatim)
 };

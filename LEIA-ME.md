@@ -1,74 +1,63 @@
-# TruckRoute — MVP fase 1 (navegação para caminhões)
+# TruckRoute — MVP fase 1 (versão 2, custo zero)
 
-App web instalável (PWA). Abre no navegador do celular e pode ser adicionado à tela inicial como um app comum. O mapa é do Google, e o motor de restrições é código próprio (`engine.js`).
+App web instalável (PWA) de navegação para caminhões. Abre no navegador do celular e vai para a tela inicial como um app comum.
+
+**Custo zero, sem chave e sem cartão:**
+
+- **Mapa:** OpenFreeMap, com dados do OpenStreetMap.
+- **Rotas:** Valhalla (servidor público da FOSSGIS), já calculadas com o perfil de caminhão: altura, largura, comprimento, peso e produto perigoso.
+- **Busca de endereços:** Nominatim (OpenStreetMap).
+- **Segunda conferência:** o motor próprio (`engine.js`) confere a rota trecho a trecho no OpenStreetMap e cruza com a base da ANTT e com os reportes dos motoristas.
 
 ## O que ele faz
 
-1. Você cadastra o veículo: tipo, altura, largura, comprimento, PBT e se leva produto perigoso.
-2. Você digita o destino (ou toca no mapa). O Google traça a rota e as alternativas.
-3. O motor próprio confere cada rota contra o seu veículo usando três fontes:
-   - **OpenStreetMap**: altura máxima, peso, largura, comprimento, vias proibidas para caminhão e para produto perigoso. Conferido pela internet a cada rota.
-   - **ANTT (dados abertos)**: pontes e viadutos das rodovias concedidas, atualizados todo mês de forma automática.
-   - **Reportes dos motoristas**, feitos no próprio app.
-4. Se a rota mais rápida tiver bloqueio, ele escolhe sozinho uma alternativa livre.
-5. Durante a navegação: próxima manobra, previsão de chegada, alertas falados de restrição a 2,5 km e perto do ponto, recálculo quando sai da rota, tela sempre ligada.
-6. O botão **Simular viagem** percorre a rota sem sair do lugar. É ideal para a banca e para testes.
+1. Você cadastra o veículo uma vez.
+2. Você digita o destino (ou toca no mapa) e escolhe o lugar certo na lista.
+3. A rota já sai calculada para o seu caminhão, com até 3 alternativas.
+4. O motor próprio confere cada trecho. Se achar algo incompatível, troca para uma alternativa livre.
+5. Na navegação, o mapa gira e inclina como no Waze, mostra a próxima manobra e avisa por voz as restrições a 2,5 km e perto do ponto. Recalcula se você sair da rota e mantém a tela ligada.
+6. O botão **Simular viagem** percorre a rota sem sair do lugar.
 
-**Limite importante:** a ANTT publica onde ficam as pontes e viadutos, mas não publica a altura livre (gabarito) nem a capacidade. Por isso os viadutos sobre a pista aparecem como "atenção", e não como bloqueio. Os números de altura e peso vêm do OpenStreetMap e dos reportes. Isso é exatamente a lacuna de dados que o TCC aponta, e o investimento em base de dados do projeto é o que a resolve.
+**Limite importante:** a ANTT publica onde ficam as pontes e viadutos das rodovias concedidas, mas não a altura livre. Por isso esses pontos aparecem como "atenção". Os limites de altura e peso vêm do OpenStreetMap e dos reportes dos motoristas.
 
 ---
 
-## Passo 1 — Chave do Google Maps (cerca de 15 min)
+## Instalação (uns 10 minutos, só GitHub)
 
-1. Entre em https://console.cloud.google.com com uma conta Google.
-2. Crie um projeto (ex.: "TruckRoute").
-3. Ative o faturamento. O Google exige cartão mesmo para ficar na cota gratuita mensal.
-4. Em **APIs e serviços → Biblioteca**, ative estas duas:
-   - **Maps JavaScript API**
-   - **Routes API**
-5. Em **APIs e serviços → Credenciais → Criar credenciais → Chave de API**, copie a chave (começa com `AIza`).
-6. Proteja a chave: clique nela e faça o seguinte.
-   - Em **Restrições de aplicativo**, escolha "Referenciadores HTTP" e adicione `https://SEU-USUARIO.github.io/*`.
-   - Em **Restrições de API**, marque só as duas APIs acima.
-7. Em **Faturamento → Orçamentos e alertas**, crie um alerta (ex.: R$ 50) para não ter surpresa.
+### 1. Subir os arquivos
 
-## Passo 2 — Publicar no GitHub Pages (grátis, cerca de 10 min)
+1. Descompacte o `truckroute-mvp.zip` no computador.
+2. Abra a pasta `truckroute`. Dentro dela estão `index.html`, `app.js`, `engine.js` e as pastas `data`, `icons` e `scripts`.
+3. No repositório do GitHub, clique em **Adicionar arquivo → Carregar arquivos**.
+4. Selecione **tudo o que está dentro** da pasta (Ctrl+A), arraste e clique em **Confirmar alterações**. O `index.html` precisa aparecer na lista principal do repositório.
 
-1. Crie uma conta em https://github.com.
-2. Crie um repositório **público** chamado `truckroute`.
-3. Clique em **Add file → Upload files** e arraste todos os arquivos e pastas deste pacote.
-   - Se a pasta `.github` não subir (ela é oculta em alguns computadores), faça assim: **Add file → Create new file**, digite o nome `.github/workflows/atualizar-antt.yml` e cole o conteúdo do arquivo.
-4. Vá em **Settings → Pages**. Em "Branch", escolha `main` e `/ (root)` e salve.
-5. Em 1 ou 2 minutos, o app estará em `https://SEU-USUARIO.github.io/truckroute/`.
+### 2. Ativar o site
 
-## Passo 3 — Baixar a base da ANTT (1 clique)
+1. Vá em **Configurações → Pages**.
+2. Em Branch, escolha `main` e `/ (root)` e clique em **Save**.
+3. Espere 1 a 2 minutos e atualize a página. O link aparece no topo, por exemplo `https://robmiotto-web.github.io/Caminhorota/`.
 
-1. No repositório, abra a aba **Actions**. Se o GitHub pedir, clique em "I understand… enable".
-2. Clique em **Atualizar base ANTT → Run workflow**.
-3. Em cerca de 1 minuto, o arquivo `data/antt_oae.json` é preenchido. Depois disso, ele se atualiza sozinho todo dia 5.
+### 3. Base da ANTT (opcional para o primeiro teste)
 
-Também dá para rodar no computador com `python3 scripts/atualizar_antt.py`.
+1. Clique em **Adicionar arquivo → Criar novo arquivo**.
+2. No nome, digite `.github/workflows/atualizar-antt.yml` e cole o conteúdo do arquivo de mesmo nome que veio no pacote.
+3. Na aba **Ações**, abra **Atualizar base ANTT** e clique em **Run workflow**. Depois disso, a base se atualiza sozinha todo dia 5.
 
-## Passo 4 — Usar no celular
+### 4. No celular
 
-1. Abra o endereço do app no Chrome (Android) ou Safari (iPhone).
-2. Cole a chave do Google na primeira tela. Ela fica salva só naquele aparelho. Se preferir, deixe a chave fixa no `config.js`.
-3. Permita a localização.
-4. Instale o app:
-   - **Android**: botão "Instalar app" ou menu ⋮ → Adicionar à tela inicial.
-   - **iPhone**: Compartilhar → Adicionar à Tela de Início.
-5. Toque no chip do veículo e confira as medidas do seu conjunto.
-6. Para testar, digite a saída (ex.: "Rondonópolis MT") e o destino (ex.: "Santos SP") e toque em **Simular viagem**.
-
-## Custos
-
-Para você testar e mostrar na banca, o uso fica dentro da cota gratuita mensal do Google. O OpenStreetMap, a ANTT e o GitHub Pages são gratuitos. Em escala, o custo do Google cresce com o número de rotas e mapas abertos. Isso entra no fluxo de caixa do plano de negócios.
+1. Abra o link no Chrome (Android) ou Safari (iPhone).
+2. Permita a localização.
+3. Instale o app:
+   - **Android:** menu ⋮ → Adicionar à tela inicial.
+   - **iPhone:** Compartilhar → Adicionar à Tela de Início.
+4. Toque no chip do veículo e confira as medidas.
+5. Para o primeiro teste, use "Sair de outro lugar" com uma rota que você conhece e toque em **Simular viagem**.
 
 ## Limites desta versão de teste
 
-- Os reportes ficam salvos no próprio celular. O compartilhamento entre motoristas precisa de um servidor, que é o próximo passo.
-- A conferência de restrições usa o servidor público do OpenStreetMap. Em rotas muito longas, ela leva de 1 a 3 minutos e pode falhar se o servidor estiver ocupado. Nesse caso, o app avisa e basta traçar a rota de novo.
-- As instruções de manobra vêm do Google. O recálculo acontece após cerca de 3 leituras de GPS fora da rota.
+- Os servidores gratuitos de rotas e de busca têm uso justo, com limite de pedidos. Para o teste do CEO e de um grupo pequeno, é suficiente. Antes da divulgação em massa, a empresa precisa de servidor próprio (custo baixo, decisão do CFO).
+- Os reportes ficam salvos no próprio celular.
+- A conferência extra em rotas longas leva de 1 a 3 minutos. A rota já sai segura para o caminhão antes disso.
 - É uma ferramenta de apoio: a sinalização da via sempre prevalece.
 
 ## Arquivos
@@ -77,8 +66,8 @@ Para você testar e mostrar na banca, o uso fica dentro da cota gratuita mensal 
 |---|---|
 | `index.html` | Telas e visual |
 | `app.js` | Mapa, rotas, navegação, voz, reportes |
-| `engine.js` | Motor próprio: geometria, leitura das restrições, avaliação contra o veículo |
-| `config.js` | Onde a chave do Google pode ficar fixa (opcional) |
+| `engine.js` | Motor próprio de restrições |
+| `config.js` | Endereços dos serviços de mapa, rota e busca |
 | `data/antt_oae.json` | Base da ANTT convertida |
 | `scripts/atualizar_antt.py` | Baixa e converte a base da ANTT |
 | `.github/workflows/atualizar-antt.yml` | Atualização automática mensal |

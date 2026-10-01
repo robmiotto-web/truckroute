@@ -12,6 +12,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
 <style>
 :root{
@@ -109,14 +110,18 @@ button{cursor:pointer}
 .alerta-item .t{font-weight:700}
 .alerta-item .d{font-size:13px;color:var(--texto2);margin-top:2px}
 
-#setup{position:fixed;inset:0;z-index:30;background:var(--chao);display:flex;align-items:center;justify-content:center;padding:24px}
-#setup .cartao{max-width:420px;width:100%;display:flex;flex-direction:column;gap:14px}
-#setup h1{margin:0;font-family:'Barlow Condensed',sans-serif;font-size:40px}
-#setup input{height:52px;background:var(--campo);border:1px solid var(--linha2);border-radius:12px;padding:0 14px;font-size:16px}
-#setup a{color:var(--placa)}
 .marca{display:flex;align-items:center;gap:10px}
 .marca i{width:40px;height:40px;border-radius:10px;background:var(--placa);display:flex;align-items:center;justify-content:center}
 
+#resultados{padding:6px;display:flex;flex-direction:column;gap:4px;max-height:40vh;overflow-y:auto}
+.res{background:none;border:none;text-align:left;padding:10px 12px;border-radius:10px;min-height:48px}
+.res:hover,.res:focus-visible{background:var(--campo)}
+.res .t{font-weight:700;font-size:16px}
+.res .s{font-size:13px;color:var(--texto2)}
+.credito{font-size:11.5px;color:#7C868F;margin-top:10px}
+.credito a{color:#9AA3AD}
+.marca-pos{width:44px;height:44px;display:flex;align-items:center;justify-content:center}
+.maplibregl-canvas{outline:none}
 #aviso-geral{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + var(--base));z-index:40;background:#F3F4F5;color:#14171A;font-weight:600;padding:12px 16px;border-radius:12px;max-width:92vw;font-size:15px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -124,19 +129,6 @@ button{cursor:pointer}
 <body>
 
 <div id="mapa" role="application" aria-label="Mapa"></div>
-
-<!-- Primeira abertura: chave do Google -->
-<div id="setup" class="oculto">
-  <div class="cartao">
-    <div class="marca"><i><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#14171A" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg></i><h1>TruckRoute</h1></div>
-    <p class="sub" style="color:var(--texto2);margin:0">Para abrir o mapa, cole a chave da API do Google Maps. Ela fica salva só neste aparelho.</p>
-    <label for="campo-chave" style="font-size:14px;color:var(--texto2)">Chave da API do Google Maps</label>
-    <input id="campo-chave" autocomplete="off" spellcheck="false" placeholder="AIza...">
-    <button class="btn btn-placa" id="salvar-chave">Abrir o mapa</button>
-    <p class="fonte" id="erro-chave" role="alert"></p>
-    <p class="fonte">Não tem chave? O passo a passo está no arquivo LEIA-ME que veio com o app.</p>
-  </div>
-</div>
 
 <!-- Busca e faixas do topo -->
 <div id="busca">
@@ -151,6 +143,7 @@ button{cursor:pointer}
       </div>
     </form>
   </div>
+  <div class="caixa oculto" id="resultados" role="listbox" aria-label="Resultados da busca"></div>
   <div id="manobra" class="oculto" aria-live="polite">
     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V6"/><path d="M6 11l6-6 6 6"/></svg>
     <div><div class="dist num" id="manobra-dist"></div><div class="txt" id="manobra-txt"></div></div>
@@ -174,11 +167,12 @@ button{cursor:pointer}
 
   <div id="p-inicio">
     <button class="chips" id="chips-veiculo" style="background:none;border:none;padding:0" aria-label="Editar veículo"></button>
-    <p class="dica" id="dica-inicio">Digite o destino ou toque no mapa. A rota é conferida contra a altura, o peso e o comprimento do seu conjunto.</p>
+    <p class="dica" id="dica-inicio">Digite o destino ou toque no mapa. A rota já sai calculada para a altura, o peso e o comprimento do seu conjunto.</p>
     <div class="duas">
       <button class="btn btn-escuro" id="btn-veiculo">Meu veículo</button>
       <button class="btn btn-escuro" id="btn-instalar" hidden>Instalar app</button>
     </div>
+    <p class="credito">Mapa © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">colaboradores do OpenStreetMap</a> · <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> · rotas <a href="https://valhalla.openstreetmap.de" target="_blank" rel="noopener">Valhalla/FOSSGIS</a></p>
   </div>
 
   <div id="p-rota" class="oculto">
@@ -252,6 +246,7 @@ button{cursor:pointer}
 
 <div id="aviso-geral" class="oculto" role="status"></div>
 
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="config.js"></script>
 <script src="engine.js"></script>
 <script src="app.js"></script>

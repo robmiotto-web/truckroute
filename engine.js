@@ -29,8 +29,9 @@
     return d > 180 ? 360 - d : d;
   }
 
-  // Decodificador do formato "encoded polyline" (precisão 1e5)
-  function decodePolyline(str) {
+  // Decodificador do formato "encoded polyline" (precisão 1e5 Google, 1e6 Valhalla)
+  function decodePolyline(str, precision) {
+    var f = Math.pow(10, precision || 5);
     var pts = [], i = 0, lat = 0, lng = 0;
     while (i < str.length) {
       var res = 0, shift = 0, b;
@@ -39,7 +40,7 @@
       res = 0; shift = 0;
       do { b = str.charCodeAt(i++) - 63; res |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
       lng += (res & 1) ? ~(res >> 1) : (res >> 1);
-      pts.push({ lat: lat / 1e5, lng: lng / 1e5 });
+      pts.push({ lat: lat / f, lng: lng / f });
     }
     return pts;
   }
