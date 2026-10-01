@@ -6,7 +6,7 @@
   var CFG = Object.assign({
     estiloMapa: 'https://tiles.openfreemap.org/styles/dark',
     rotas: 'https://valhalla1.openstreetmap.de/route',
-    busca: 'https://nominatim.openstreetmap.org/search'
+    busca: 'https://photon.komoot.io/api/'
   }, window.TRUCKROUTE_CONFIG || {});
   var $ = function (s) { return document.querySelector(s); };
   var LS = {
@@ -15,8 +15,35 @@
   };
   var OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
   var CORREDOR = 20;
-  var VEH_PADRAO = { tipo: 'bitrem', altura: 4.4, largura: 2.6, comprimento: 19.8, pbt: 57, perigoso: false };
-  var NOMES_TIPO = { truck: 'Truck', carreta: 'Carreta', bitrem: 'Bitrem', rodotrem: 'Rodotrem', vuc: 'VUC / toco' };
+  // Catálogo de conjuntos e carrocerias: valores são referência para pré-preencher; o motorista confirma a medida real
+  var COMPOSICOES = [
+    { id: 'vuc', nome: 'VUC / 3/4', sub: 'Urbano, 2 eixos', comp: 6.3, pbt: 8, larg: 2.2 },
+    { id: 'toco', nome: 'Toco', sub: '2 eixos', comp: 10, pbt: 16, larg: 2.6 },
+    { id: 'truck', nome: 'Truck', sub: '3 eixos', comp: 12, pbt: 23, larg: 2.6 },
+    { id: 'bitruck', nome: 'Bitruck', sub: '4 eixos', comp: 14, pbt: 29, larg: 2.6 },
+    { id: 'carreta4', nome: 'Carreta 4 eixos', sub: 'Cavalo 4x2 + 2 eixos', comp: 18.6, pbt: 33, larg: 2.6 },
+    { id: 'carreta5', nome: 'Carreta 5 eixos', sub: 'Cavalo 4x2 + 3 eixos', comp: 18.6, pbt: 41.5, larg: 2.6 },
+    { id: 'carreta6', nome: 'Carreta LS 6 eixos', sub: 'Cavalo 6x2 + 3 eixos', comp: 18.6, pbt: 48.5, larg: 2.6 },
+    { id: 'vanderleia', nome: 'Vanderléia', sub: '6 eixos distanciados', comp: 18.6, pbt: 53, larg: 2.6 },
+    { id: 'bitrem', nome: 'Bitrem', sub: '7 eixos', comp: 19.8, pbt: 57, larg: 2.6 },
+    { id: 'rodotrem', nome: 'Rodotrem / Bitrem 9', sub: '9 eixos', comp: 25, pbt: 74, larg: 2.6 }
+  ];
+  var CARROCERIAS = [
+    { id: 'sider', nome: 'Sider', sub: 'Lonado com cortina', alt: 4.4 },
+    { id: 'bau', nome: 'Baú', sub: 'Carga seca fechada', alt: 4.3 },
+    { id: 'frigo', nome: 'Baú frigorífico', sub: 'Refrigerado', alt: 4.3 },
+    { id: 'graneleiro', nome: 'Graneleiro', sub: 'Grade alta', alt: 4.1 },
+    { id: 'gradebaixa', nome: 'Grade baixa / aberta', sub: 'A carga define a altura', alt: 4.0, carga: true },
+    { id: 'basculante', nome: 'Basculante', sub: 'Caçamba', alt: 3.6 },
+    { id: 'tanque', nome: 'Tanque', sub: 'Líquidos ou gases', alt: 3.9 },
+    { id: 'conteiner', nome: 'Porta-contêiner', sub: 'Muda com o contêiner', alt: 4.3, carga: true },
+    { id: 'cegonha', nome: 'Cegonha', sub: 'Transporte de veículos', alt: 4.95, carga: true },
+    { id: 'prancha', nome: 'Prancha / especial', sub: 'A carga define a altura', alt: 4.4, carga: true },
+    { id: 'florestal', nome: 'Florestal', sub: 'Toras e madeira', alt: 4.2, carga: true },
+    { id: 'boiadeiro', nome: 'Boiadeiro', sub: 'Gado vivo', alt: 4.2 }
+  ];
+  function achar(lista, id) { for (var i = 0; i < lista.length; i++) if (lista[i].id === id) return lista[i]; return null; }
+  var VEH_PADRAO = { comp: null, carr: null, altura: 4.4, largura: 2.6, comprimento: 18.6, pbt: 48.5, perigoso: false };
   var COR = { bloqueio: '#E5533D', atencao: '#F2A900', info: '#7FA8D9' };
 
   var S = {
@@ -72,17 +99,37 @@
     if (qual !== 'nav') $('#aviso').classList.add('oculto');
     requestAnimationFrame(posFlutuantes);
   }
-  function posFlutuantes() { $('#flutuantes').style.bottom = ($('#painel').offsetHeight + 14) + 'px'; }
+  function posFlutuantes() {
+    var b = ($('#painel').offsetHeight + 14) + 'px';
+    $('#flutuantes').style.bottom = b; $('#velocimetro').style.bottom = b;
+  }
   function abrir(id) { $(id).classList.remove('oculto'); }
   function fechar(id) { $(id).classList.add('oculto'); }
   document.addEventListener('click', function (e) {
     var f = e.target.closest('[data-fechar]'); if (f) fechar('#' + f.closest('.modal').id);
     if (e.target.classList.contains('modal')) fechar('#' + e.target.id);
   });
+  function nomeConjunto(v) {
+    var c = achar(COMPOSICOES, v.comp), k = achar(CARROCERIAS, v.carr);
+    return (c ? c.nome : 'Veículo') + (k ? ' ' + k.nome.toLowerCase() : '');
+  }
+  function carrAtual() { return achar(CARROCERIAS, S.veh.carr) || {}; }
+  // Medidas desta viagem: para carroceria aberta, a altura com a carga do dia vale mais que a do cadastro
+  function vehViagem() {
+    var v = Object.assign({}, S.veh), h = num($('#altura-hoje').value);
+    if (carrAtual().carga && h && h > 1.5 && h < 6) v.altura = h;
+    return v;
+  }
   function chipsVeiculo(alvo) {
-    var v = S.veh, c = $(alvo); c.textContent = '';
-    [NOMES_TIPO[v.tipo] || v.tipo, E.fmtNum(v.altura) + ' m altura', E.fmtNum(v.pbt) + ' t', E.fmtNum(v.comprimento) + ' m', v.perigoso ? 'Produto perigoso' : null]
+    var v = vehViagem(), c = $(alvo); c.textContent = '';
+    if (!v.comp) { c.appendChild(el('span', { class: 'chip', text: 'Toque para cadastrar seu veículo' })); return; }
+    [nomeConjunto(v), E.fmtNum(v.altura) + ' m altura', E.fmtNum(v.pbt) + ' t', E.fmtNum(v.comprimento) + ' m', v.perigoso ? 'Produto perigoso' : null]
       .forEach(function (t) { if (t) c.appendChild(el('span', { class: 'chip', text: t })); });
+  }
+  function atualizarLinhaAltura() {
+    var k = carrAtual(), linha = $('#linha-altura');
+    linha.classList.toggle('oculto', !k.carga);
+    $('#altura-hoje').placeholder = k.carga ? 'Com a carga de hoje (cadastro: ' + E.fmtNum(S.veh.altura) + ' m)' : '';
   }
 
   // ---------- mapa ----------
@@ -135,11 +182,12 @@
     navigator.geolocation.watchPosition(function (g) {
       if (S.nav && S.nav.sim) return;
       var primeira = !S.pos;
-      aoPosicionar({ lat: g.coords.latitude, lng: g.coords.longitude, heading: g.coords.heading, speed: g.coords.speed });
-      if (primeira && !S.rotas.length) S.mapa.jumpTo({ center: ll(S.pos), zoom: 14 });
+      aoPosicionar({ lat: g.coords.latitude, lng: g.coords.longitude, heading: g.coords.heading, speed: g.coords.speed, prec: g.coords.accuracy, t: g.timestamp || Date.now() });
+      if (primeira && !S.rotas.length && S.mapa) S.mapa.jumpTo({ center: ll(S.pos), zoom: 15 });
     }, function (err) {
       if (err.code === 1) toast('Localização bloqueada. Libere nas configurações do navegador ou preencha a saída.', 6000);
-    }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
+      else toast('Procurando sinal de GPS…', 2500);
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
   }
 
   function criarMarcaPos() {
@@ -150,14 +198,42 @@
   }
 
   function aoPosicionar(p) {
-    if (S.pos && (p.heading == null || isNaN(p.heading))) {
-      p.heading = E.haversine(S.pos, p) > 3 ? E.bearing(S.pos, p) : S.pos.heading;
+    var ant = S.pos;
+    p.t = p.t || Date.now();
+    if (ant) {
+      var d = E.haversine(ant, p), dt = (p.t - (ant.t || p.t)) / 1000;
+      if (p.heading == null || isNaN(p.heading)) p.heading = d > 3 ? E.bearing(ant, p) : ant.heading;
+      if ((p.speed == null || isNaN(p.speed)) && dt > 0) p.speed = d / dt;
     }
     S.pos = p; LS.set('ultimaPos', { lat: p.lat, lng: p.lng });
+    atualizarVelocimetro(p);
     if (!S.mapa) return;
-    if (!S.marcaPos) S.marcaPos = criarMarcaPos().setLngLat(ll(p)).addTo(S.mapa);
-    S.marcaPos.setLngLat(ll(p)).setRotation(p.heading || 0);
+    if (!S.marcaPos) { S.marcaPos = criarMarcaPos().setLngLat(ll(p)).setRotation(p.heading || 0).addTo(S.mapa); }
+    else animarMarca(ant || p, p);
     if (S.nav) passoNavegacao(p);
+    else if (S.seguir && !S.rotas.length) S.mapa.easeTo({ center: ll(p), duration: 800 });
+  }
+
+  // Movimento suave do caminhão entre uma leitura de GPS e a próxima (sem "pulos")
+  var animId = null;
+  function animarMarca(de, para) {
+    if (animId) cancelAnimationFrame(animId);
+    var t0 = performance.now(), dur = 900;
+    var r0 = de.heading || 0, r1 = para.heading || r0, dr = ((r1 - r0 + 540) % 360) - 180;
+    function quadro(agora) {
+      var k = Math.min(1, (agora - t0) / dur);
+      S.marcaPos.setLngLat([de.lng + (para.lng - de.lng) * k, de.lat + (para.lat - de.lat) * k]).setRotation(r0 + dr * k);
+      if (k < 1) animId = requestAnimationFrame(quadro); else animId = null;
+    }
+    animId = requestAnimationFrame(quadro);
+  }
+
+  function atualizarVelocimetro(p) {
+    var v = $('#velocimetro'); v.classList.remove('oculto');
+    $('#vel').textContent = p.speed != null && !isNaN(p.speed) ? Math.max(0, Math.round(p.speed * 3.6)) : 0;
+    var pr = $('#gps-prec');
+    if (p.prec != null) { pr.textContent = 'GPS ±' + Math.round(p.prec) + ' m'; pr.style.color = p.prec > 50 ? '#F2A900' : ''; }
+    else pr.textContent = S.nav && S.nav.sim ? 'simulação' : '';
   }
 
   $('#btn-centro').addEventListener('click', function () {
@@ -181,38 +257,99 @@
     }).catch(function () { S.anttInfo = { total: 0 }; });
   }
 
-  // ---------- busca de endereço (Nominatim) ----------
+  // ---------- busca de endereço com sugestões enquanto digita (Photon/OpenStreetMap) ----------
   var COORD = /^\s*(-?\d+(?:[.,]\d+)?)\s*[,;]\s*(-?\d+(?:[.,]\d+)?)\s*$/;
+  var BRASIL = '-74.1,-33.9,-34.7,5.4';
+  function textoLugar(p) {
+    var rua = p.street ? p.street + (p.housenumber ? ', ' + p.housenumber : '') : '';
+    var nome = p.name || rua || p.city || p.county || 'Local';
+    var resto = [];
+    if (rua && rua !== nome) resto.push(rua);
+    [p.district, p.city, p.state].forEach(function (x) { if (x && x !== nome && resto.indexOf(x) < 0) resto.push(x); });
+    return { nome: nome, sub: resto.join(' · ') };
+  }
   function buscarLugar(txt) {
     var m = txt.match(COORD);
     if (m) return Promise.resolve([{ lat: num(m[1]), lng: num(m[2]), nome: txt.trim(), sub: 'Coordenadas' }]);
-    var url = CFG.busca + '?format=jsonv2&countrycodes=br&limit=5&accept-language=pt-BR&q=' + encodeURIComponent(txt);
+    var ref = S.pos || LS.get('ultimaPos', null);
+    var url = CFG.busca + '?limit=6&bbox=' + BRASIL + '&q=' + encodeURIComponent(txt) + (ref ? '&lat=' + ref.lat.toFixed(4) + '&lon=' + ref.lng.toFixed(4) : '');
     return fetch(url).then(function (r) {
       if (!r.ok) throw new Error('A busca de endereços está ocupada. Tente de novo em alguns segundos.');
       return r.json();
-    }).then(function (lista) {
-      return lista.map(function (x) {
-        var partes = String(x.display_name || '').split(',');
-        return { lat: +x.lat, lng: +x.lon, nome: (x.name || partes[0]).trim(), sub: partes.slice(1, 4).join(',').trim() };
-      });
+    }).then(function (j) {
+      var vistos = {};
+      return (j.features || []).map(function (f) {
+        var t = textoLugar(f.properties || {});
+        return { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], nome: t.nome, sub: t.sub };
+      }).filter(function (x) { var k = x.nome + '|' + x.sub; if (vistos[k]) return false; vistos[k] = 1; return true; });
     });
   }
 
-  function escolherDaLista(lista) {
-    return new Promise(function (ok) {
-      if (lista.length === 1) { ok(lista[0]); return; }
-      var box = $('#resultados'); box.textContent = '';
-      lista.forEach(function (x) {
-        box.appendChild(el('button', { class: 'res', role: 'option', onclick: function () { box.classList.add('oculto'); ok(x); } },
-          [el('div', { class: 't', text: x.nome }), el('div', { class: 's', text: x.sub })]));
-      });
-      box.classList.remove('oculto');
+  // Lista de sugestões compartilhada pelos campos Saída e Destino
+  var sug = { campo: null, itens: [], ativo: -1, aoEscolher: null, token: 0, timer: null };
+  function mostrarSugestoes(campo, itens, aoEscolher, titulo) {
+    var box = $('#resultados'); box.textContent = '';
+    sug.campo = campo; sug.itens = itens; sug.ativo = -1; sug.aoEscolher = aoEscolher;
+    if (titulo) box.appendChild(el('div', { class: 'dica', style: 'margin:4px 8px 6px', text: titulo }));
+    itens.forEach(function (x, i) {
+      box.appendChild(el('button', { type: 'button', class: 'res', role: 'option', id: 'sug-' + i,
+        onmousedown: function (e) { e.preventDefault(); },
+        onclick: function () { escolherSugestao(i); } },
+        [el('div', { class: 't', text: x.nome }), el('div', { class: 's', text: x.sub || '' })]));
+    });
+    box.classList.toggle('oculto', !itens.length);
+    campo.setAttribute('aria-expanded', String(!!itens.length));
+  }
+  function esconderSugestoes() {
+    $('#resultados').classList.add('oculto');
+    if (sug.campo) sug.campo.setAttribute('aria-expanded', 'false');
+    sug.token++;
+  }
+  function escolherSugestao(i) {
+    var x = sug.itens[i], f = sug.aoEscolher; if (!x) return;
+    sug.campo.value = x.nome; esconderSugestoes(); if (f) f(x);
+  }
+  function ligarAutocompletar(campo, aoEscolher) {
+    campo.addEventListener('input', function () {
+      aoEscolher(null);
+      clearTimeout(sug.timer);
+      var q = campo.value.trim();
+      if (q.length < 3) { esconderSugestoes(); return; }
+      var tk = ++sug.token;
+      sug.timer = setTimeout(function () {
+        buscarLugar(q).then(function (l) { if (tk === sug.token) mostrarSugestoes(campo, l, aoEscolher); }).catch(function () { /* tenta de novo na próxima letra */ });
+      }, 280);
+    });
+    campo.addEventListener('keydown', function (e) {
+      if ($('#resultados').classList.contains('oculto') || sug.campo !== campo) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        sug.ativo = (sug.ativo + (e.key === 'ArrowDown' ? 1 : -1) + sug.itens.length) % sug.itens.length;
+        document.querySelectorAll('.res').forEach(function (b, i) { b.style.background = i === sug.ativo ? 'var(--campo)' : ''; });
+        campo.setAttribute('aria-activedescendant', 'sug-' + sug.ativo);
+      } else if (e.key === 'Enter' && sug.ativo >= 0) { e.preventDefault(); escolherSugestao(sug.ativo); }
+      else if (e.key === 'Escape') esconderSugestoes();
+    });
+    campo.addEventListener('blur', function () { setTimeout(esconderSugestoes, 150); });
+  }
+
+  // Sem sugestão escolhida: busca e pede para o motorista confirmar com um toque, como no Waze
+  var SILENCIO = { silencioso: true };
+  function enviarRota() {
+    var f = $('#form-rota');
+    if (f.requestSubmit) f.requestSubmit(); else f.dispatchEvent(new Event('submit', { cancelable: true }));
+  }
+  function pedirConfirmacao(campo, txt, titulo, gravar) {
+    return buscarLugar(txt).then(function (l) {
+      if (!l.length) throw new Error('Não encontrei "' + txt + '". Tente cidade e estado, ex.: Santos SP.');
+      mostrarSugestoes(campo, l, function (x) { gravar(x); enviarRota(); }, titulo);
+      throw SILENCIO;
     });
   }
 
   // ---------- rotas (Valhalla, perfil caminhão) ----------
   function pedirRotas(origem, destino) {
-    var v = S.veh;
+    var v = vehViagem();
     var corpo = {
       locations: [{ lat: origem.lat, lon: origem.lng, type: 'break' }, { lat: destino.lat, lon: destino.lng, type: 'break' }],
       costing: 'truck',
@@ -253,23 +390,27 @@
     if (l.classList.contains('oculto')) $('#origem').value = '';
     posFlutuantes();
   });
-  $('#destino').addEventListener('input', function () { S.destino = null; });
+  ligarAutocompletar($('#destino'), function (x) { S.destino = x; if (x) $('#tracar').focus(); });
+  ligarAutocompletar($('#origem'), function (x) { S.origemEscolhida = x; });
+  $('#altura-hoje').addEventListener('change', function () { chipsVeiculo('#chips-veiculo'); });
 
   $('#form-rota').addEventListener('submit', function (e) {
     e.preventDefault();
     if (!S.mapa) { toast('O mapa ainda está carregando.'); return; }
+    if (!S.veh.comp) { abrirVeiculo(); toast('Cadastre seu veículo antes da primeira rota.'); return; }
     var dTxt = $('#destino').value.trim(), oTxt = $('#origem').value.trim();
     if (!dTxt && !S.destino) { toast('Digite o destino ou toque no mapa.'); $('#destino').focus(); return; }
     if (!oTxt && !S.pos) { toast('Sem GPS ainda. Toque em "Sair de outro lugar" e preencha a saída.', 5000); return; }
-    document.activeElement.blur();
+    if (carrAtual().carga && !num($('#altura-hoje').value)) toast('Dica: informe a altura com a carga de hoje para uma rota mais segura.', 4000);
     var botao = $('#tracar'); botao.disabled = true; botao.textContent = 'Buscando…';
-    var pOrigem = oTxt ? buscarLugar(oTxt).then(function (l) { if (!l.length) throw new Error('Não encontrei a saída "' + oTxt + '".'); return escolherDaLista(l); }) : Promise.resolve(S.pos);
-    pOrigem.then(function (o) {
-      if (S.destino) return [o, S.destino];
-      return buscarLugar(dTxt).then(function (l) { if (!l.length) throw new Error('Não encontrei "' + dTxt + '". Tente cidade e estado, ex.: Santos SP.'); return escolherDaLista(l); })
-        .then(function (d) { S.destino = d; $('#destino').value = d.nome; return [o, d]; });
-    }).then(function (od) { botao.textContent = 'Calculando…'; return tracar(od[0], od[1]); })
-      .catch(function (err) { toast(err.message, 7000); })
+    var passo;
+    if (oTxt && !S.origemEscolhida) passo = pedirConfirmacao($('#origem'), oTxt, 'Confirme a saída:', function (x) { S.origemEscolhida = x; });
+    else if (!S.destino) passo = pedirConfirmacao($('#destino'), dTxt, 'Confirme o destino:', function (x) { S.destino = x; });
+    else {
+      document.activeElement.blur(); botao.textContent = 'Calculando…';
+      passo = tracar(oTxt ? S.origemEscolhida : S.pos, S.destino);
+    }
+    passo.catch(function (err) { if (err !== SILENCIO) toast(err.message, 7000); })
       .then(function () { botao.disabled = false; botao.textContent = 'Traçar rota'; });
   });
 
@@ -316,7 +457,7 @@
   // ---------- segunda camada: motor próprio de restrições ----------
   function juntarAchados(r) {
     var osm = Object.keys(r.osm).map(function (k) { return r.osm[k]; });
-    r.achados = E.findingsFromOverpass({ elements: osm }, r.idx, S.veh, CORREDOR)
+    r.achados = E.findingsFromOverpass({ elements: osm }, r.idx, vehViagem(), CORREDOR)
       .concat(E.findingsFromAntt(S.antt, r.idx), E.findingsFromReports(S.reportes, r.idx))
       .sort(function (a, b) { return a.along - b.along; });
   }
@@ -387,7 +528,7 @@
     $('#r-tempo').textContent = fmtDur(r.dur);
     $('#r-dist').textContent = fmtDist(r.dist) + (r.desc ? ' · via ' + r.desc : '') + ' · chegada ' + fmtHora(new Date(Date.now() + r.dur * 1000));
     var c = contar(r), st = $('#r-status');
-    var perfil = (NOMES_TIPO[S.veh.tipo] || '') + ' de ' + E.fmtNum(S.veh.altura) + ' m e ' + E.fmtNum(S.veh.pbt) + ' t';
+    var vv = vehViagem(), perfil = nomeConjunto(vv) + ' de ' + E.fmtNum(vv.altura) + ' m e ' + E.fmtNum(vv.pbt) + ' t';
     if (r.estado === 'verificando') st.textContent = 'Rota calculada para ' + perfil + '. Conferindo de novo trecho a trecho… ' + Math.round(r.prog * 100) + '%';
     else if (r.estado === 'parcial') st.textContent = 'Rota calculada para ' + perfil + '. Parte da conferência extra não respondeu; toque em Traçar rota para completar.';
     else if (c.bloqueio) st.textContent = 'Atenção: a conferência extra achou ' + c.bloqueio + ' ponto(s) incompatível(is). Veja os alertas.';
@@ -535,31 +676,62 @@
   }
   $('#btn-voz').addEventListener('click', function () { S.voz = !S.voz; LS.set('voz', S.voz); iconeVoz(); toast(S.voz ? 'Voz ligada' : 'Voz desligada', 1500); if (S.voz) falar('Voz ligada.'); });
 
-  // ---------- veículo ----------
+  // ---------- veículo: cadastro em 3 etapas (conjunto → carroceria → medidas), salvo no aparelho ----------
+  var wiz = { passo: 1, comp: null, carr: null };
   function abrirVeiculo() {
-    var v = S.veh;
-    $('#v-tipo').value = v.tipo; $('#v-altura').value = E.fmtNum(v.altura); $('#v-largura').value = E.fmtNum(v.largura);
-    $('#v-comprimento').value = E.fmtNum(v.comprimento); $('#v-pbt').value = E.fmtNum(v.pbt); $('#v-perigoso').checked = !!v.perigoso;
-    var a = S.anttInfo;
-    $('#info-bases').textContent = (a && a.total
-      ? 'Base ANTT: ' + a.total.toLocaleString('pt-BR') + ' pontes e viadutos das rodovias concedidas' + (a.atualizado ? ', atualizada em ' + new Date(a.atualizado).toLocaleDateString('pt-BR') : '') + '. '
-      : 'Base ANTT ainda não baixada neste site (veja o LEIA-ME). ') + 'As rotas já saem calculadas para estas medidas.';
+    wiz.comp = S.veh.comp; wiz.carr = S.veh.carr;
+    irPasso(S.veh.comp ? 3 : 1);
     abrir('#m-veiculo');
   }
-  $('#btn-veiculo').addEventListener('click', abrirVeiculo);
-  $('#chips-veiculo').addEventListener('click', abrirVeiculo);
-  $('#form-veiculo').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var v = { tipo: $('#v-tipo').value, altura: num($('#v-altura').value), largura: num($('#v-largura').value), comprimento: num($('#v-comprimento').value), pbt: num($('#v-pbt').value), perigoso: $('#v-perigoso').checked };
-    if (!v.altura || v.altura > 6 || !v.largura || v.largura > 4 || !v.comprimento || v.comprimento > 40 || !v.pbt || v.pbt > 200) {
+  function opcoes(alvo, lista, escolhido, aoClicar) {
+    var box = $(alvo); box.textContent = '';
+    lista.forEach(function (o) {
+      box.appendChild(el('button', { type: 'button', class: 'opcao', 'aria-pressed': String(o.id === escolhido), onclick: function () { aoClicar(o); } },
+        [el('span', { class: 't', text: o.nome }), el('span', { class: 's', text: o.sub })]));
+    });
+  }
+  function sugestaoMedidas() {
+    var c = achar(COMPOSICOES, wiz.comp), k = achar(CARROCERIAS, wiz.carr);
+    var mesmo = S.veh.comp === wiz.comp && S.veh.carr === wiz.carr;
+    if (mesmo) return S.veh;
+    var alt = k.alt;
+    if (c.id === 'vuc') alt = Math.min(alt, 3.3);
+    return { altura: alt, largura: c.larg, comprimento: c.comp, pbt: c.pbt, perigoso: S.veh.perigoso };
+  }
+  function irPasso(n) {
+    wiz.passo = n;
+    [1, 2, 3].forEach(function (i) { $('#vp-' + i).classList.toggle('oculto', i !== n); $('#vp-ind-' + i).classList.toggle('on', i <= n); });
+    if (n === 1) opcoes('#op-comp', COMPOSICOES, wiz.comp, function (o) { wiz.comp = o.id; irPasso(2); });
+    if (n === 2) opcoes('#op-carr', CARROCERIAS, wiz.carr, function (o) { wiz.carr = o.id; irPasso(3); });
+    if (n === 3) {
+      var m = sugestaoMedidas(), k = achar(CARROCERIAS, wiz.carr);
+      $('#v-resumo').textContent = nomeConjunto({ comp: wiz.comp, carr: wiz.carr }) + (k && k.carga ? '. Como a carga define a altura, o app vai pedir a altura do dia antes de cada rota.' : '.');
+      $('#v-altura').value = E.fmtNum(m.altura); $('#v-largura').value = E.fmtNum(m.largura);
+      $('#v-comprimento').value = E.fmtNum(m.comprimento); $('#v-pbt').value = E.fmtNum(m.pbt); $('#v-perigoso').checked = !!m.perigoso;
+      var a = S.anttInfo;
+      $('#info-bases').textContent = a && a.total ? 'Base ANTT: ' + a.total.toLocaleString('pt-BR') + ' pontes e viadutos das rodovias concedidas' + (a.atualizado ? ', atualizada em ' + new Date(a.atualizado).toLocaleDateString('pt-BR') : '') + '.' : '';
+    }
+    $('#v-voltar').textContent = n === 1 ? (S.veh.comp ? 'Cancelar' : 'Depois') : 'Voltar';
+    $('#v-avancar').textContent = n === 3 ? 'Salvar veículo' : 'Continuar';
+    $('#v-avancar').disabled = (n === 1 && !wiz.comp) || (n === 2 && !wiz.carr);
+  }
+  $('#v-voltar').addEventListener('click', function () { if (wiz.passo === 1) fechar('#m-veiculo'); else irPasso(wiz.passo - 1); });
+  $('#v-avancar').addEventListener('click', function () { if (wiz.passo < 3) irPasso(wiz.passo + 1); else salvarVeiculo(); });
+  $('#form-veiculo').addEventListener('submit', function (e) { e.preventDefault(); if (wiz.passo === 3) salvarVeiculo(); });
+  function salvarVeiculo() {
+    var v = { comp: wiz.comp, carr: wiz.carr, altura: num($('#v-altura').value), largura: num($('#v-largura').value), comprimento: num($('#v-comprimento').value), pbt: num($('#v-pbt').value), perigoso: $('#v-perigoso').checked };
+    if (!v.altura || v.altura < 1.5 || v.altura > 6 || !v.largura || v.largura > 4 || !v.comprimento || v.comprimento > 40 || !v.pbt || v.pbt > 200) {
       toast('Confira os números: altura em metros (ex.: 4,40) e peso em toneladas (ex.: 57).', 5000); return;
     }
-    S.veh = v; LS.set('veiculo', v); chipsVeiculo('#chips-veiculo'); fechar('#m-veiculo');
+    S.veh = v; LS.set('veiculo', v); fechar('#m-veiculo');
+    atualizarLinhaAltura(); chipsVeiculo('#chips-veiculo');
     if (S.rotas.length && S.origem && S.destino && !S.nav) {
       toast('Veículo salvo. Recalculando a rota para as novas medidas…');
       tracar(S.origem, S.destino).catch(function (err) { toast(err.message, 7000); });
-    } else toast('Veículo salvo.');
-  });
+    } else toast('Veículo salvo. Ele fica guardado para as próximas rotas.', 4000);
+  }
+  $('#btn-veiculo').addEventListener('click', abrirVeiculo);
+  $('#chips-veiculo').addEventListener('click', abrirVeiculo);
 
   // ---------- reportes ----------
   var TIPOS_REP = [
@@ -610,8 +782,10 @@
 
   window.addEventListener('resize', posFlutuantes);
   iconeVoz();
-  chipsVeiculo('#chips-veiculo');
   carregarAntt();
+  atualizarLinhaAltura();
+  chipsVeiculo('#chips-veiculo');
   painel('inicio');
   criarMapa();
+  if (!S.veh.comp) setTimeout(abrirVeiculo, 400); // primeiro acesso: cadastro do veículo
 })();

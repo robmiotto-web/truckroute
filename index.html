@@ -122,6 +122,19 @@ button{cursor:pointer}
 .credito a{color:#9AA3AD}
 .marca-pos{width:44px;height:44px;display:flex;align-items:center;justify-content:center}
 .maplibregl-canvas{outline:none}
+.passos{display:flex;gap:6px;margin-bottom:14px}
+.passos span{flex:1;font-size:12px;font-weight:700;letter-spacing:.3px;color:var(--texto3);border-top:3px solid var(--linha2);padding-top:6px}
+.passos span.on{color:var(--placa);border-color:var(--placa)}
+.opcoes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opcao{min-height:72px;border-radius:14px;background:var(--campo);border:2px solid var(--linha);display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;padding:10px 12px;text-align:left}
+.opcao[aria-pressed="true"]{border-color:var(--placa);background:#2A2410}
+.opcao .t{font-weight:700;font-size:16px}
+.opcao .s{font-size:12.5px;color:var(--texto2);line-height:1.3}
+#velocimetro{position:fixed;left:14px;z-index:4;width:72px;height:72px;border-radius:36px;background:#14171A;border:2px solid var(--linha2);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+#velocimetro .num{font-size:28px}
+#velocimetro small{font-size:10.5px;color:var(--texto2)}
+#velocimetro #gps-prec{font-size:9.5px;margin-top:2px}
+.res .ico{font-size:12px;color:var(--placa);font-weight:700;text-transform:uppercase;letter-spacing:.4px}
 #aviso-geral{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + var(--base));z-index:40;background:#F3F4F5;color:#14171A;font-weight:600;padding:12px 16px;border-radius:12px;max-width:92vw;font-size:15px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -134,8 +147,9 @@ button{cursor:pointer}
 <div id="busca">
   <div class="caixa" id="caixa-busca">
     <form id="form-rota" autocomplete="off">
-      <div class="linha-campo oculto" id="linha-origem"><label for="origem">Saída</label><input id="origem" placeholder="Minha localização"></div>
-      <div class="linha-campo"><label for="destino">Destino</label><input id="destino" placeholder="Cidade, empresa ou endereço" enterkeyhint="go"></div>
+      <div class="linha-campo oculto" id="linha-origem"><label for="origem">Saída</label><input id="origem" placeholder="Minha localização" role="combobox" aria-autocomplete="list" aria-controls="resultados" aria-expanded="false"></div>
+      <div class="linha-campo"><label for="destino">Destino</label><input id="destino" placeholder="Cidade, empresa ou endereço" enterkeyhint="go" role="combobox" aria-autocomplete="list" aria-controls="resultados" aria-expanded="false"></div>
+      <div class="linha-campo oculto" id="linha-altura"><label for="altura-hoje">Altura hoje</label><input id="altura-hoje" inputmode="decimal" placeholder="Altura com a carga desta viagem"><span style="color:var(--texto2);font-size:14px">m</span></div>
       <div class="acoes-busca">
         <button type="button" class="link-btn" id="mostrar-origem">Sair de outro lugar</button>
         <span style="flex:1"></span>
@@ -153,6 +167,9 @@ button{cursor:pointer}
     <div><strong id="aviso-titulo"></strong><span id="aviso-txt"></span></div>
   </div>
 </div>
+
+<!-- Velocidade e GPS -->
+<div id="velocimetro" class="oculto" aria-live="off"><span class="num" id="vel">0</span><small>km/h</small><small id="gps-prec"></small></div>
 
 <!-- Botões flutuantes -->
 <div id="flutuantes">
@@ -205,20 +222,32 @@ button{cursor:pointer}
 
 <!-- Modal: veículo -->
 <div class="modal oculto" id="m-veiculo" role="dialog" aria-modal="true" aria-labelledby="t-veiculo">
-  <form class="folha" id="form-veiculo">
-    <h2 id="t-veiculo">Meu veículo</h2>
-    <p class="sub">A rota e os alertas usam estes dados.</p>
-    <div class="grade2">
-      <label class="campo-num" style="grid-column:1/-1"><span>Tipo de conjunto</span>
-        <select id="v-tipo"><option value="truck">Truck</option><option value="carreta">Carreta</option><option value="bitrem">Bitrem</option><option value="rodotrem">Rodotrem</option><option value="vuc">VUC / toco</option></select></label>
-      <label class="campo-num"><span>Altura total (m)</span><input id="v-altura" inputmode="decimal" required></label>
-      <label class="campo-num"><span>Largura (m)</span><input id="v-largura" inputmode="decimal" required></label>
-      <label class="campo-num"><span>Comprimento (m)</span><input id="v-comprimento" inputmode="decimal" required></label>
-      <label class="campo-num"><span>PBT combinado (t)</span><input id="v-pbt" inputmode="decimal" required></label>
-    </div>
-    <label class="alternar"><span><strong>Produto perigoso</strong><br><span style="font-size:13px;color:var(--texto2)">Evita vias proibidas para carga perigosa</span></span><input type="checkbox" id="v-perigoso"></label>
-    <p class="fonte" id="info-bases"></p>
-    <div class="duas"><button type="button" class="btn btn-escuro" data-fechar>Cancelar</button><button type="submit" class="btn btn-placa">Salvar</button></div>
+  <form class="folha" id="form-veiculo" novalidate>
+    <div class="passos" aria-hidden="true"><span id="vp-ind-1">1 · Conjunto</span><span id="vp-ind-2">2 · Carroceria</span><span id="vp-ind-3">3 · Medidas</span></div>
+    <section id="vp-1">
+      <h2 id="t-veiculo">Qual é o seu conjunto?</h2>
+      <p class="sub">Cadastro feito uma vez só. Fica salvo para as próximas rotas.</p>
+      <div class="opcoes" id="op-comp"></div>
+    </section>
+    <section id="vp-2" class="oculto">
+      <h2>Qual é a carroceria?</h2>
+      <p class="sub">A altura muda conforme o implemento.</p>
+      <div class="opcoes" id="op-carr"></div>
+    </section>
+    <section id="vp-3" class="oculto">
+      <h2>Confira as medidas</h2>
+      <p class="sub" id="v-resumo"></p>
+      <div class="grade2">
+        <label class="campo-num"><span>Altura total (m)</span><input id="v-altura" inputmode="decimal"></label>
+        <label class="campo-num"><span>Largura (m)</span><input id="v-largura" inputmode="decimal"></label>
+        <label class="campo-num"><span>Comprimento (m)</span><input id="v-comprimento" inputmode="decimal"></label>
+        <label class="campo-num"><span>PBT combinado (t)</span><input id="v-pbt" inputmode="decimal"></label>
+      </div>
+      <label class="alternar"><span><strong>Produto perigoso</strong><br><span style="font-size:13px;color:var(--texto2)">Evita vias proibidas para carga perigosa</span></span><input type="checkbox" id="v-perigoso"></label>
+      <p class="fonte">Os números vêm preenchidos como referência para esse tipo de conjunto. Ajuste para a medida real do seu veículo (documento, AET ou trena): é ela que define a rota.</p>
+      <p class="fonte" id="info-bases"></p>
+    </section>
+    <div class="duas"><button type="button" class="btn btn-escuro" id="v-voltar">Voltar</button><button type="button" class="btn btn-placa" id="v-avancar">Continuar</button></div>
   </form>
 </div>
 

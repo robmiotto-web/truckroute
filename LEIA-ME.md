@@ -1,4 +1,4 @@
-# TruckRoute — MVP fase 1 (versão 2, custo zero)
+# TruckRoute — MVP fase 1 (versão 3, custo zero)
 
 App web instalável (PWA) de navegação para caminhões. Abre no navegador do celular e vai para a tela inicial como um app comum.
 
@@ -6,17 +6,19 @@ App web instalável (PWA) de navegação para caminhões. Abre no navegador do c
 
 - **Mapa:** OpenFreeMap, com dados do OpenStreetMap.
 - **Rotas:** Valhalla (servidor público da FOSSGIS), já calculadas com o perfil de caminhão: altura, largura, comprimento, peso e produto perigoso.
-- **Busca de endereços:** Nominatim (OpenStreetMap).
+- **Busca de endereços:** Photon (OpenStreetMap), com sugestões enquanto você digita.
 - **Segunda conferência:** o motor próprio (`engine.js`) confere a rota trecho a trecho no OpenStreetMap e cruza com a base da ANTT e com os reportes dos motoristas.
 
 ## O que ele faz
 
-1. Você cadastra o veículo uma vez.
-2. Você digita o destino (ou toca no mapa) e escolhe o lugar certo na lista.
-3. A rota já sai calculada para o seu caminhão, com até 3 alternativas.
-4. O motor próprio confere cada trecho. Se achar algo incompatível, troca para uma alternativa livre.
-5. Na navegação, o mapa gira e inclina como no Waze, mostra a próxima manobra e avisa por voz as restrições a 2,5 km e perto do ponto. Recalcula se você sair da rota e mantém a tela ligada.
-6. O botão **Simular viagem** percorre a rota sem sair do lugar.
+1. No primeiro acesso, o app pede o cadastro do veículo em 3 toques: conjunto (Toco, Truck, Carreta LS, Bitrem…), carroceria (Sider, Baú, Graneleiro, Grade baixa…) e confirmação das medidas. Fica salvo para as próximas rotas.
+2. Para carrocerias em que a carga define a altura (grade baixa, prancha, porta-contêiner, cegonha, florestal), o app mostra o campo "Altura hoje" antes de cada rota.
+3. Você digita o destino e o app sugere os lugares enquanto você escreve. Um toque confirma, como no Waze.
+4. A rota já sai calculada para o seu caminhão, com até 3 alternativas.
+5. O motor próprio confere cada trecho. Se achar algo incompatível, troca para uma alternativa livre.
+6. Na navegação, o mapa gira e inclina como no Waze, mostra a próxima manobra e avisa por voz as restrições a 2,5 km e perto do ponto. Recalcula se você sair da rota e mantém a tela ligada.
+7. O caminhão aparece no mapa em tempo real, com movimento suave, velocidade e precisão do GPS.
+8. O botão **Simular viagem** percorre a rota sem sair do lugar.
 
 **Limite importante:** a ANTT publica onde ficam as pontes e viadutos das rodovias concedidas, mas não a altura livre. Por isso esses pontos aparecem como "atenção". Os limites de altura e peso vêm do OpenStreetMap e dos reportes dos motoristas.
 
@@ -57,6 +59,8 @@ App web instalável (PWA) de navegação para caminhões. Abre no navegador do c
 
 - Os servidores gratuitos de rotas e de busca têm uso justo, com limite de pedidos. Para o teste do CEO e de um grupo pequeno, é suficiente. Antes da divulgação em massa, a empresa precisa de servidor próprio (custo baixo, decisão do CFO).
 - Os reportes ficam salvos no próprio celular.
+- Como é um app web, o GPS funciona com o app aberto na tela. Com a tela apagada ou o app minimizado, o celular pausa a localização. Durante a navegação, o app mantém a tela ligada.
+- As medidas sugeridas no cadastro são referência por tipo de conjunto. Vale sempre a medida real do veículo.
 - A conferência extra em rotas longas leva de 1 a 3 minutos. A rota já sai segura para o caminhão antes disso.
 - É uma ferramenta de apoio: a sinalização da via sempre prevalece.
 
