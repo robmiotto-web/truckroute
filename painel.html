@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TruckRoute Empresas — Painel do embarcador</title>
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
+<style>
+:root{--fundo:#F4F2EE;--cartao:#FFFFFF;--linha:#E4E0D8;--texto:#14171A;--texto2:#555E66;--placa:#F2A900;--escuro:#14171A;--ok:#1E6B2E;--ok-fundo:#E7F3E9;--azul:#1B6BE0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--fundo:#0E1114;--cartao:#161A1E;--linha:#262B31;--texto:#F3F4F5;--texto2:#A7B0B9;--ok:#8FDC99;--ok-fundo:#1F2A1F}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--fundo);color:var(--texto);font-family:'Barlow',system-ui,sans-serif}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--placa);outline-offset:2px}
+.num{font-family:'Barlow Condensed',sans-serif;font-weight:700}
+header{background:#14171A;color:#F3F4F5;padding:14px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header .marca{display:flex;align-items:center;gap:10px;font-family:'Barlow Condensed',sans-serif;font-size:24px;font-weight:700}
+header .marca i{width:34px;height:34px;border-radius:8px;background:var(--placa);display:flex;align-items:center;justify-content:center}
+header small{color:#A7B0B9;font-size:14px}
+main{max-width:1200px;margin:0 auto;padding:20px;display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:20px}
+@media (max-width:900px){main{grid-template-columns:1fr;padding:14px}}
+.cartao{background:var(--cartao);border:1px solid var(--linha);border-radius:16px;padding:18px}
+h1{font-family:'Barlow Condensed',sans-serif;font-size:30px;margin:0 0 4px}
+h2{font-family:'Barlow Condensed',sans-serif;font-size:24px;margin:0 0 12px}
+.sub{color:var(--texto2);margin:0 0 14px;font-size:15px}
+label{display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--texto2);margin-bottom:10px}
+input,select{height:44px;border-radius:10px;border:1px solid var(--linha);background:var(--fundo);padding:0 12px;font-size:16px;color:var(--texto)}
+.dupla{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{min-height:48px;border-radius:12px;border:none;padding:0 18px;font-size:16px;font-weight:700;width:100%}
+.btn-placa{background:var(--placa);color:#14171A}
+.btn-escuro{background:var(--escuro);color:#F3F4F5}
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:16px}
+@media (max-width:600px){.kpis{grid-template-columns:1fr}}
+.kpi .v{font-size:34px;line-height:1.1}
+.kpi .r{font-size:14px;color:var(--texto2)}
+.filtros{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.filtros select{height:40px;font-size:15px}
+.tabela{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:15px;min-width:720px}
+th{text-align:left;font-size:12.5px;letter-spacing:.4px;color:var(--texto2);padding:10px;border-bottom:1px solid var(--linha);text-transform:uppercase}
+td{padding:12px 10px;border-bottom:1px solid var(--linha);vertical-align:middle}
+td .s{font-size:13px;color:var(--texto2)}
+.tag{display:inline-block;font-size:12.5px;font-weight:700;padding:4px 8px;border-radius:999px;background:var(--ok-fundo);color:var(--ok)}
+.st{font-size:13px;font-weight:700;padding:6px 10px;border-radius:10px;white-space:nowrap}
+.st-env{background:#FFF3D1;color:#7A5300}
+.st-ok{background:var(--ok-fundo);color:var(--ok)}
+.vazio{color:var(--texto2);padding:20px 0}
+.preview{background:#0E1114;color:#F3F4F5;border-radius:22px;padding:16px;margin-top:14px;border:6px solid #262B31}
+.preview .t{font-size:13px;color:#A7B0B9;letter-spacing:.4px;text-transform:uppercase;font-weight:700}
+.preview .v{font-family:'Barlow Condensed',sans-serif;font-size:32px;color:#6BCB77;line-height:1.1}
+.preview .acoes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.preview .acoes span{min-height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:700}
+.nota{font-size:13px;color:var(--texto2);line-height:1.45;margin-top:12px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:#14171A;color:#F3F4F5;padding:12px 16px;border-radius:12px;font-weight:600;display:none;max-width:92vw}
+</style>
+</head>
+<body>
+<header>
+  <div class="marca"><i><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#14171A" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg></i>TruckRoute Empresas</div>
+  <small>Painel do embarcador · demonstração</small>
+  <a href="./" style="margin-left:auto;color:#F2A900;font-weight:700;text-decoration:none">Sou motorista → app</a>
+</header>
+<main>
+  <section class="cartao" aria-labelledby="t-oferta">
+    <h2 id="t-oferta">Publicar carga</h2>
+    <p class="sub">A oferta vai, em pop-up, para os motoristas compatíveis que estão chegando na cidade de coleta.</p>
+    <form id="f-oferta">
+      <div class="dupla">
+        <label>Coleta em<select id="o-origem"></select></label>
+        <label>Entrega em<input id="o-destino" required placeholder="Ex.: Rondonópolis MT"></label>
+      </div>
+      <div class="dupla">
+        <label>Carroceria<select id="o-carr"></select></label>
+        <label>Peso (t)<input id="o-peso" inputmode="decimal" required value="30"></label>
+      </div>
+      <div class="dupla">
+        <label>Valor do frete (R$)<input id="o-valor" inputmode="decimal" required placeholder="Ex.: 14800"></label>
+        <label>Coleta<select id="o-janela"><option>Hoje</option><option selected>Amanhã cedo</option><option>Em 2 dias</option></select></label>
+      </div>
+      <button class="btn btn-placa" type="submit">Enviar oferta aos compatíveis</button>
+    </form>
+    <div class="preview" aria-label="Como o motorista recebe a oferta">
+      <div class="t">O motorista vê assim</div>
+      <div style="font-size:17px;font-weight:700;margin-top:6px" id="pv-rota">Carga de retorno saindo de …</div>
+      <div class="v" id="pv-valor">R$ —</div>
+      <div style="font-size:14px;color:#A7B0B9" id="pv-info">Perto da sua descarga</div>
+      <div class="acoes"><span style="background:#22282E">Recusar</span><span style="background:#F2A900;color:#14171A">Aceitar</span></div>
+    </div>
+    <p class="nota">Antes de publicar, confira se o valor respeita o piso mínimo de frete da ANTT. Só aparecem motoristas que autorizaram compartilhar o veículo e a previsão de chegada (LGPD).</p>
+  </section>
+
+  <section>
+    <h1>Motoristas chegando na região</h1>
+    <p class="sub">Previsão de chegada calculada pelo app do motorista, com o veículo e a preferência de retorno de cada um.</p>
+    <div class="kpis">
+      <div class="cartao kpi"><div class="v num" id="k-total">0</div><div class="r">Motoristas compatíveis</div></div>
+      <div class="cartao kpi"><div class="v num" id="k-24h">0</div><div class="r">Chegam nas próximas 24h</div></div>
+      <div class="cartao kpi"><div class="v num" id="k-ofertas">0</div><div class="r">Ofertas enviadas</div></div>
+    </div>
+    <div class="cartao">
+      <div class="filtros">
+        <select id="f-cidade" aria-label="Cidade"></select>
+        <select id="f-carr" aria-label="Carroceria"></select>
+        <select id="f-cap" aria-label="Capacidade mínima"><option value="0">Qualquer capacidade</option><option value="20">20 t ou mais</option><option value="35">35 t ou mais</option><option value="50">50 t ou mais</option></select>
+      </div>
+      <div class="tabela">
+        <table>
+          <thead><tr><th>Motorista</th><th>Veículo</th><th>Chega em</th><th>Previsão</th><th>Prefere voltar para</th><th></th></tr></thead>
+          <tbody id="lista"></tbody>
+        </table>
+      </div>
+      <p class="nota">Dados de demonstração. Com o servidor no ar, esta lista é alimentada em tempo real pelos motoristas que usam o app.</p>
+    </div>
+  </section>
+</main>
+<div id="toast" role="status"></div>
+<script>
+(function () {
+  'use strict';
+  var $ = function (s) { return document.querySelector(s); };
+  var CARR = ['Sider', 'Baú', 'Baú frigorífico', 'Graneleiro', 'Grade baixa', 'Basculante', 'Tanque', 'Porta-contêiner'];
+  var agora = Date.now(), h = 3600000;
+  // Demonstração: nomes abreviados, como no app real (privacidade)
+  var M = [
+    ['José S.', 'Bitrem 7 eixos', 'Graneleiro', 57, 'Santos SP', 2, 'Rondonópolis MT', 4.9, 214],
+    ['Marcos R.', 'Rodotrem 9 eixos', 'Graneleiro', 74, 'Santos SP', 5, 'Sorriso MT', 4.8, 96],
+    ['Ana L.', 'Carreta LS 6 eixos', 'Sider', 48.5, 'Contagem MG', 1, 'Campinas SP', 4.9, 152],
+    ['Paulo C.', 'Carreta LS 6 eixos', 'Baú', 48.5, 'Contagem MG', 7, 'Rio de Janeiro RJ', 4.7, 41],
+    ['Ricardo F.', 'Bitrem 7 eixos', 'Graneleiro', 57, 'Paranaguá PR', 3, 'Rio Verde GO', 5.0, 308],
+    ['Edson M.', 'Truck', 'Baú frigorífico', 23, 'Contagem MG', 4, 'Belo Horizonte MG', 4.6, 77],
+    ['Cláudia P.', 'Carreta 5 eixos', 'Grade baixa', 41.5, 'Campinas SP', 9, 'Contagem MG', 4.8, 63],
+    ['Luiz H.', 'Vanderléia', 'Sider', 53, 'Santos SP', 20, 'Goiânia GO', 4.9, 188],
+    ['Rafael T.', 'Carreta LS 6 eixos', 'Tanque', 48.5, 'Paranaguá PR', 11, 'Cuiabá MT', 4.7, 59],
+    ['Sérgio A.', 'Bitruck', 'Baú', 29, 'Campinas SP', 6, 'São Paulo SP', 4.5, 33],
+    ['Wagner D.', 'Carreta 5 eixos', 'Porta-contêiner', 41.5, 'Santos SP', 13, 'Campinas SP', 4.8, 120],
+    ['Fábio N.', 'Toco', 'Baú', 16, 'Contagem MG', 30, 'Betim MG', 4.9, 18]
+  ].map(function (x, i) { return { id: i, nome: x[0], conj: x[1], carr: x[2], cap: x[3], cidade: x[4], eta: agora + x[5] * h, volta: x[6], nota: x[7], viagens: x[8], status: '' }; });
+  var cidades = M.map(function (m) { return m.cidade; }).filter(function (c, i, a) { return a.indexOf(c) === i; }).sort();
+  function opcoes(sel, lista, primeira) { sel.innerHTML = ''; if (primeira) sel.add(new Option(primeira, '')); lista.forEach(function (x) { sel.add(new Option(x, x)); }); }
+  opcoes($('#f-cidade'), cidades, 'Todas as cidades'); opcoes($('#f-carr'), CARR, 'Todas as carrocerias');
+  opcoes($('#o-origem'), cidades); opcoes($('#o-carr'), CARR);
+  $('#o-origem').value = 'Santos SP'; $('#o-carr').value = 'Graneleiro'; $('#f-cidade').value = 'Santos SP';
+  var enviadas = 0, tt;
+  function toast(t) { var e = $('#toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(tt); tt = setTimeout(function () { e.style.display = 'none'; }, 3500); }
+  function hora(ms) { var d = new Date(ms); return d.toLocaleDateString('pt-BR', { weekday: 'short' }) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
+  function emH(ms) { var x = Math.round((ms - Date.now()) / h); return x <= 0 ? 'chegando' : 'em ' + x + 'h'; }
+  function filtrados() {
+    var c = $('#f-cidade').value, k = $('#f-carr').value, cap = +$('#f-cap').value;
+    return M.filter(function (m) { return (!c || m.cidade === c) && (!k || m.carr === k) && m.cap >= cap; }).sort(function (a, b) { return a.eta - b.eta; });
+  }
+  function td(t, s) { var e = document.createElement('td'); var d = document.createElement('div'); d.textContent = t; d.style.fontWeight = '600'; e.appendChild(d); if (s) { var x = document.createElement('div'); x.className = 's'; x.textContent = s; e.appendChild(x); } return e; }
+  function render() {
+    var l = filtrados(), tb = $('#lista'); tb.innerHTML = '';
+    $('#k-total').textContent = l.length;
+    $('#k-24h').textContent = l.filter(function (m) { return m.eta - Date.now() < 24 * h; }).length;
+    $('#k-ofertas').textContent = enviadas;
+    if (!l.length) { var tr = document.createElement('tr'), c = document.createElement('td'); c.colSpan = 6; c.className = 'vazio'; c.textContent = 'Nenhum motorista com esses filtros.'; tr.appendChild(c); tb.appendChild(tr); return; }
+    l.forEach(function (m) {
+      var tr = document.createElement('tr');
+      tr.appendChild(td(m.nome, '★ ' + m.nota.toFixed(1).replace('.', ',') + ' · ' + m.viagens + ' viagens'));
+      tr.appendChild(td(m.conj, m.carr + ' · até ' + String(m.cap).replace('.', ',') + ' t'));
+      tr.appendChild(td(m.cidade));
+      tr.appendChild(td(hora(m.eta), emH(m.eta)));
+      tr.appendChild(td(m.volta));
+      var a = document.createElement('td');
+      if (m.status) { var s = document.createElement('span'); s.className = 'st ' + (m.status === 'Aceitou' ? 'st-ok' : 'st-env'); s.textContent = m.status; a.appendChild(s); }
+      else { var tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = 'RNTRC ok'; a.appendChild(tag); }
+      tr.appendChild(a); tb.appendChild(tr);
+    });
+  }
+  function preview() {
+    var v = parseFloat(String($('#o-valor').value).replace(/\./g, '').replace(',', '.'));
+    $('#pv-rota').textContent = 'Carga de retorno: ' + $('#o-origem').value + ' → ' + ($('#o-destino').value || '…');
+    $('#pv-valor').textContent = isNaN(v) ? 'R$ —' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+    $('#pv-info').textContent = $('#o-carr').value + ' · ' + ($('#o-peso').value || '—') + ' t · coleta ' + $('#o-janela').value.toLowerCase();
+  }
+  ['#f-cidade', '#f-carr', '#f-cap'].forEach(function (s) { $(s).addEventListener('change', render); });
+  ['#o-origem', '#o-destino', '#o-carr', '#o-peso', '#o-valor', '#o-janela'].forEach(function (s) { $(s).addEventListener('input', preview); });
+  $('#f-oferta').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var peso = parseFloat(String($('#o-peso').value).replace(',', '.')), orig = $('#o-origem').value, carr = $('#o-carr').value;
+    var alvo = M.filter(function (m) { return m.cidade === orig && m.carr === carr && m.cap >= peso && m.eta - Date.now() < 48 * h; });
+    if (!alvo.length) { toast('Nenhum motorista compatível chegando em ' + orig + ' nas próximas 48h.'); return; }
+    alvo.forEach(function (m) { m.status = 'Oferta enviada'; });
+    enviadas += alvo.length;
+    $('#f-cidade').value = orig; $('#f-carr').value = carr; render();
+    toast('Oferta enviada para ' + alvo.length + ' motorista(s) compatível(is).');
+    var prefere = alvo.filter(function (m) { return $('#o-destino').value && m.volta.toLowerCase().indexOf($('#o-destino').value.toLowerCase().split(' ')[0]) >= 0; })[0] || alvo[0];
+    setTimeout(function () { prefere.status = 'Aceitou'; render(); toast(prefere.nome + ' aceitou a carga. Contato liberado.'); }, 3500);
+  });
+  preview(); render();
+})();
+</script>
+</body>
+</html>

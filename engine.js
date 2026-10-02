@@ -178,10 +178,10 @@
     if (wd != null && veh.largura > wd) out.push({ nivel: 'bloqueio', motivo: 'largura', texto: 'Largura máxima ' + fmtNum(wd) + ' m' });
     var len = parseMeters(tags.maxlength);
     if (len != null && veh.comprimento > len) out.push({ nivel: 'bloqueio', motivo: 'comprimento', texto: 'Comprimento máximo ' + fmtNum(len) + ' m (seu conjunto: ' + fmtNum(veh.comprimento) + ' m)' });
-    var hgv = (tags.hgv || '').toLowerCase();
+    var hgv = veh.leve ? '' : (tags.hgv || '').toLowerCase();
     if (hgv === 'no') out.push({ nivel: 'bloqueio', motivo: 'proibido', texto: 'Via proibida para caminhões' });
     else if (hgv === 'destination' || hgv === 'delivery') out.push({ nivel: 'atencao', motivo: 'proibido', texto: 'Caminhões só com destino local' });
-    if (veh.perigoso && (tags.hazmat || '').toLowerCase() === 'no') out.push({ nivel: 'bloqueio', motivo: 'perigoso', texto: 'Proibido para produto perigoso' });
+    if (!veh.leve && veh.perigoso && (tags.hazmat || '').toLowerCase() === 'no') out.push({ nivel: 'bloqueio', motivo: 'perigoso', texto: 'Proibido para produto perigoso' });
     return out;
   }
 
@@ -190,6 +190,12 @@
   // ---------- Casamento de uma via OSM com a rota ----------
   // Exige que a via "corra junto" com a rota (evita falso alerta de via que só cruza por cima/baixo)
   function matchWay(idx, geom, oneway, corridor) {
+    var h = matchHits(idx, geom, oneway, corridor); return h ? h[0].r : null;
+  }
+  function matchWayRange(idx, geom, oneway, corridor) {
+    var h = matchHits(idx, geom, oneway, corridor); return h ? { from: h[0].r.along, to: h[h.length - 1].r.along } : null;
+  }
+  function matchHits(idx, geom, oneway, corridor) {
     var hits = [];
     for (var i = 0; i < geom.length; i++) {
       var r = nearestOnRoute(idx, geom[i]);
@@ -206,15 +212,15 @@
       if (diff < 35 || (!oneway && Math.abs(diff - 180) < 35)) { aligned = true; break; }
     }
     hits.sort(function (x, y) { return x.r.along - y.r.along; });
-    if (hits.length >= 2 && aligned) return hits[0].r;
-    if (hits.length === 1 && wayLen < 60 && hits[0].r.d < 12) return hits[0].r;
+    if (hits.length >= 2 && aligned) return hits;
+    if (hits.length === 1 && wayLen < 60 && hits[0].r.d < 12) return hits;
     return null;
   }
 
   // ---------- Overpass (OpenStreetMap) ----------
   function overpassQuery(chunk, corridor) {
     var c = chunk.map(function (p) { return p.lat.toFixed(5) + ',' + p.lng.toFixed(5); }).join(',');
-    var a = '(around:' + corridor + ',' + c + ')';
+    var a = '(around:' + corridor + ',' + c + ')', a2 = '(around:40,' + c + ')', b = '(around:150,' + c + ')';
     return '[out:json][timeout:40];(' +
       'way' + a + '["maxheight"];' +
       'way' + a + '["maxheight:physical"];' +
@@ -225,6 +231,11 @@
       'way' + a + '["hgv"~"^(no|destination|delivery)$"];' +
       'way' + a + '["hazmat"="no"];' +
       'node' + a + '["maxheight"];' +
+      'way' + a + '["maxspeed"];' +
+      'node' + b + '["amenity"~"^(fuel|police|weighbridge)$"];' +
+      'way' + b + '["amenity"~"^(fuel|police|weighbridge)$"];' +
+      'node' + a2 + '["highway"="speed_camera"];' +
+      'node' + a2 + '["barrier"="toll_booth"];' +
       ');out tags geom;';
   }
 
@@ -327,13 +338,72 @@
     return { concessionaria: (fields[0] || '').trim(), tipo: (fields[1] || '').trim().toUpperCase(), nome: (fields[2] || '').trim(), rodovia: rod, km: km, lat: lat, lng: lng, extensao: num(fields[4]) };
   }
 
+  // ---------- Limites de velocidade ao longo da rota ----------
+  function parseKmh(v) {
+    if (v == null) return null;
+    var m = String(v).match(/^(\d+)\s*(mph)?/i);
+    if (!m) return null;
+    var n = +m[1]; if (m[2]) n = Math.round(n * 1.609);
+    return n >= 5 && n <= 150 ? n : null;
+  }
+  function speedLimits(json, idx, veh, corridor) {
+    var out = [];
+    (json.elements || []).forEach(function (el) {
+      if (el.type !== 'way' || !el.geometry || !el.tags) return;
+      var lim = (!veh.leve && parseKmh(el.tags['maxspeed:hgv'])) || parseKmh(el.tags.maxspeed);
+      if (!lim) return;
+      var geom = el.geometry.map(function (g) { return { lat: g.lat, lng: g.lon }; });
+      var ow = el.tags.oneway === 'yes' || el.tags.oneway === '1' || el.tags.junction === 'roundabout';
+      var r = matchWayRange(idx, geom, ow, corridor);
+      if (r) out.push({ from: r.from, to: Math.max(r.to, r.from + 30), lim: lim });
+    });
+    return out.sort(function (a, b) { return a.from - b.from; });
+  }
+  function limitAt(lims, along) {
+    var best = null;
+    for (var i = 0; i < lims.length; i++) { if (lims[i].from > along + 10) break; if (along <= lims[i].to + 10) best = lims[i]; }
+    return best ? best.lim : null;
+  }
+
+  // ---------- Pontos de interesse: postos, polícia, balança, radar, pedágio ----------
+  var POI_TIPO = [
+    ['radar', function (t) { return t.highway === 'speed_camera'; }, 40],
+    ['pedagio', function (t) { return t.barrier === 'toll_booth'; }, 60],
+    ['policia', function (t) { return t.amenity === 'police'; }, 150],
+    ['balanca', function (t) { return t.amenity === 'weighbridge'; }, 150],
+    ['posto', function (t) { return t.amenity === 'fuel'; }, 150]
+  ];
+  function poisFromOverpass(json, idx) {
+    var out = [];
+    (json.elements || []).forEach(function (el) {
+      var t = el.tags || {}, tipo = null, raio = 0;
+      for (var i = 0; i < POI_TIPO.length; i++) if (POI_TIPO[i][1](t)) { tipo = POI_TIPO[i][0]; raio = POI_TIPO[i][2]; break; }
+      if (!tipo) return;
+      var p;
+      if (el.type === 'node') p = { lat: el.lat, lng: el.lon };
+      else if (el.geometry && el.geometry.length) {
+        var la = 0, lo = 0; el.geometry.forEach(function (g) { la += g.lat; lo += g.lon; });
+        p = { lat: la / el.geometry.length, lng: lo / el.geometry.length };
+      } else return;
+      var r = nearestOnRoute(idx, p);
+      if (!r || r.d > raio) return;
+      out.push({ tipo: tipo, nome: t.name || t.brand || t.operator || '', lim: parseKmh(t.maxspeed), along: r.along, lat: p.lat, lng: p.lng });
+    });
+    out.sort(function (a, b) { return a.along - b.along; });
+    // várias cabines de pedágio ou postes de radar no mesmo ponto viram um só aviso
+    return out.filter(function (x, i) {
+      for (var j = i - 1; j >= 0 && x.along - out[j].along < 300; j--) if (out[j].tipo === x.tipo) return false;
+      return true;
+    });
+  }
+
   var api = {
     haversine: haversine, bearing: bearing, decodePolyline: decodePolyline, buildRouteIndex: buildRouteIndex,
     nearestOnRoute: nearestOnRoute, simplify: simplify, chunkForOverpass: chunkForOverpass,
     parseMeters: parseMeters, parseTonnes: parseTonnes, evaluateTags: evaluateTags, matchWay: matchWay,
     overpassQuery: overpassQuery, findingsFromOverpass: findingsFromOverpass, findingsFromAntt: findingsFromAntt,
     findingsFromReports: findingsFromReports, pointAt: pointAt, parseAnttCsvRow: parseAnttCsvRow, fmtNum: fmtNum,
-    toXY: toXY, cellKey: cellKey
+    toXY: toXY, cellKey: cellKey, speedLimits: speedLimits, limitAt: limitAt, poisFromOverpass: poisFromOverpass, matchWayRange: matchWayRange, parseKmh: parseKmh
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.TREngine = api;
 })(this);

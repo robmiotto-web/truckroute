@@ -17,7 +17,9 @@
   var CORREDOR = 20;
   // Catálogo de conjuntos e carrocerias: valores são referência para pré-preencher; o motorista confirma a medida real
   var COMPOSICOES = [
-    { id: 'vuc', nome: 'VUC / 3/4', sub: 'Urbano, 2 eixos', comp: 6.3, pbt: 8, larg: 2.2 },
+    { id: 'carro', nome: 'Carro de passeio', sub: 'Entregas e aplicativos', comp: 4.5, pbt: 2, larg: 1.9, alt: 1.6, leve: true, semCarr: true },
+    { id: 'fiorino', nome: 'Fiorino / utilitário', sub: 'Baú pequeno', comp: 4.5, pbt: 2.5, larg: 1.9, alt: 2.0, leve: true, carrs: ['bau', 'frigo'] },
+    { id: 'vuc', nome: 'VUC / 3/4', sub: 'Urbano, 2 eixos', comp: 6.3, pbt: 8, larg: 2.2, semCarrs: ['conteiner'] },
     { id: 'toco', nome: 'Toco', sub: '2 eixos', comp: 10, pbt: 16, larg: 2.6 },
     { id: 'truck', nome: 'Truck', sub: '3 eixos', comp: 12, pbt: 23, larg: 2.6 },
     { id: 'bitruck', nome: 'Bitruck', sub: '4 eixos', comp: 14, pbt: 29, larg: 2.6 },
@@ -44,6 +46,7 @@
   ];
   function achar(lista, id) { for (var i = 0; i < lista.length; i++) if (lista[i].id === id) return lista[i]; return null; }
   var VEH_PADRAO = { comp: null, carr: null, altura: 4.4, largura: 2.6, comprimento: 18.6, pbt: 48.5, perigoso: false };
+  var NOME_POI = { radar: 'Radar', policia: 'Polícia Rodoviária', balanca: 'Balança', pedagio: 'Pedágio', posto: 'Posto de combustível' };
   var COR = { bloqueio: '#E5533D', atencao: '#F2A900', info: '#7FA8D9' };
 
   var S = {
@@ -102,6 +105,7 @@
   function posFlutuantes() {
     var b = ($('#painel').offsetHeight + 14) + 'px';
     $('#flutuantes').style.bottom = b; $('#velocimetro').style.bottom = b;
+    $('#placa-vel').style.bottom = ($('#painel').offsetHeight + 20) + 'px';
   }
   function abrir(id) { $(id).classList.remove('oculto'); }
   function fechar(id) { $(id).classList.add('oculto'); }
@@ -147,6 +151,18 @@
       S.mapa.addLayer({ id: 'rotas-alt', type: 'line', source: 'rotas', filter: ['==', ['get', 'sel'], false], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#5B6570', 'line-width': 6, 'line-opacity': 0.85 } });
       S.mapa.addLayer({ id: 'rotas-borda', type: 'line', source: 'rotas', filter: ['==', ['get', 'sel'], true], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#0B3A80', 'line-width': 11 } });
       S.mapa.addLayer({ id: 'rotas-sel', type: 'line', source: 'rotas', filter: ['==', ['get', 'sel'], true], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#4C9BFF', 'line-width': 7 } });
+      S.mapa.addSource('transito', { type: 'geojson', data: fc([]) });
+      S.mapa.addLayer({ id: 'transito', type: 'line', source: 'transito', layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': ['match', ['get', 'cat'], 'JAM', '#E5533D', 'ROAD_CLOSURE', '#8B1A10', '#F2A900'], 'line-width': 7 } });
+      S.mapa.addSource('pois', { type: 'geojson', data: fc([]) });
+      S.mapa.addLayer({ id: 'pois', type: 'circle', source: 'pois', paint: {
+        'circle-radius': 11, 'circle-stroke-color': '#12161A', 'circle-stroke-width': 2,
+        'circle-color': ['match', ['get', 'tipo'], 'radar', '#E5533D', 'policia', '#2F6FD6', 'balanca', '#9B59D0', 'pedagio', '#7C868F', '#2E9E6A'] } });
+      S.mapa.addLayer({ id: 'pois-txt', type: 'symbol', source: 'pois', layout: {
+        'text-field': ['match', ['get', 'tipo'], 'radar', 'R', 'policia', 'PRF', 'balanca', 'B', 'pedagio', '$', 'P'],
+        'text-font': ['Noto Sans Bold'], 'text-size': 10.5, 'text-allow-overlap': true, 'icon-allow-overlap': true },
+        paint: { 'text-color': '#FFFFFF' } });
+      S.mapa.on('click', 'pois', function (e) { var p = e.features[0].properties; toast(NOME_POI[p.tipo] + (p.nome ? ' · ' + p.nome : '') + (p.lim ? ' · limite ' + p.lim + ' km/h' : ''), 4000); });
       S.mapa.addSource('achados', { type: 'geojson', data: fc([]) });
       S.mapa.addLayer({ id: 'achados', type: 'circle', source: 'achados', paint: {
         'circle-radius': ['match', ['get', 'nivel'], 'info', 4, 9],
@@ -347,17 +363,65 @@
     });
   }
 
-  // ---------- rotas (Valhalla, perfil caminhão) ----------
+  // ---------- rotas: TomTom (com trânsito ao vivo) quando há chave; Valhalla (gratuito) como reserva ----------
+  // Formato comum: { pts, dist, dur, atraso, passos:[{texto,voz,si}], transito:[{si,ei,cat}], desc }
+  function chaveTomTom() { return (CFG.tomtomKey || LS.get('tomtom', '') || '').trim(); }
   function pedirRotas(origem, destino) {
+    if (chaveTomTom()) return pedirTomTom(origem, destino).catch(function (e) {
+      if (e && e.chave) { toast('Chave do trânsito recusada. Usando rotas sem trânsito.', 5000); return pedirValhalla(origem, destino); }
+      if (e && e.semRota) throw e;
+      return pedirValhalla(origem, destino);
+    });
+    return pedirValhalla(origem, destino);
+  }
+  function rodovias(lista) {
+    var out = []; lista.forEach(function (s) { if (/^(BR|[A-Z]{2})-\d/.test(s) && out.indexOf(s) < 0) out.push(s); });
+    return out.slice(0, 2).join(' e ');
+  }
+  function pedirTomTom(o, d) {
+    var v = vehViagem(), q = {
+      key: chaveTomTom(), traffic: 'true', maxAlternatives: '2', instructionsType: 'text', language: 'pt-BR',
+      sectionType: 'traffic', routeType: 'fastest', travelMode: v.leve ? 'car' : 'truck'
+    };
+    if (!v.leve) {
+      q.vehicleHeight = v.altura; q.vehicleWidth = v.largura; q.vehicleLength = v.comprimento;
+      q.vehicleWeight = Math.round(v.pbt * 1000); q.vehicleCommercial = 'true';
+      if (v.perigoso) q.vehicleLoadType = 'otherHazmatGeneral';
+    }
+    var url = 'https://api.tomtom.com/routing/1/calculateRoute/' + o.lat + ',' + o.lng + ':' + d.lat + ',' + d.lng + '/json?' +
+      Object.keys(q).map(function (k) { return k + '=' + encodeURIComponent(q[k]); }).join('&');
+    return fetch(url).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (r.status === 403 || r.status === 401) throw { chave: true };
+        if (!r.ok || !j.routes) {
+          var msg = (j.error && j.error.description) || '';
+          if (/no route|NO_ROUTE_FOUND|unreachable/i.test(msg)) { var e = new Error('Não há rota possível para este veículo entre esses pontos.'); e.semRota = true; throw e; }
+          throw new Error('tomtom ' + r.status);
+        }
+        return j.routes.map(function (rt) {
+          var pts = []; rt.legs.forEach(function (lg) { lg.points.forEach(function (p) { pts.push({ lat: p.latitude, lng: p.longitude }); }); });
+          var ins = (rt.guidance && rt.guidance.instructions) || [], nomes = [];
+          ins.forEach(function (i) { (i.roadNumbers || []).forEach(function (n) { nomes.push(n); }); });
+          return {
+            pts: pts, dist: rt.summary.lengthInMeters, dur: rt.summary.travelTimeInSeconds, atraso: rt.summary.trafficDelayInSeconds || 0,
+            passos: ins.filter(function (i) { return i.message; }).map(function (i) { return { texto: i.message, voz: i.message, si: i.pointIndex || 0 }; }),
+            transito: (rt.sections || []).filter(function (x) { return x.sectionType === 'TRAFFIC'; }).map(function (x) {
+              return { si: x.startPointIndex, ei: x.endPointIndex, cat: x.simpleCategory || 'JAM', atraso: x.delayInSeconds || 0 };
+            }),
+            desc: rodovias(nomes), fonte: 'tomtom'
+          };
+        });
+      });
+    });
+  }
+  function pedirValhalla(origem, destino) {
     var v = vehViagem();
     var corpo = {
       locations: [{ lat: origem.lat, lon: origem.lng, type: 'break' }, { lat: destino.lat, lon: destino.lng, type: 'break' }],
-      costing: 'truck',
-      costing_options: { truck: { height: v.altura, width: v.largura, length: v.comprimento, weight: v.pbt, hazmat: !!v.perigoso } },
-      alternates: 2, units: 'kilometers', language: 'pt-BR',
+      costing: v.leve ? 'auto' : 'truck', alternates: 2, units: 'kilometers', language: 'pt-BR',
       directions_options: { units: 'kilometers', language: 'pt-BR' }
     };
-    // GET evita a checagem prévia de CORS e funciona em qualquer celular
+    if (!v.leve) corpo.costing_options = { truck: { height: v.altura, width: v.largura, length: v.comprimento, weight: v.pbt, hazmat: !!v.perigoso } };
     return fetch(CFG.rotas + '?json=' + encodeURIComponent(JSON.stringify(corpo))).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
         if (!r.ok || !j.trip) {
@@ -366,21 +430,28 @@
           if (/no path|no suitable edges|cannot find/i.test(msg)) throw new Error('Não há rota possível para este veículo entre esses pontos. Confira as medidas ou escolha outro destino.');
           throw new Error('Não consegui calcular a rota agora' + (msg ? ' (' + msg + ')' : '') + '.');
         }
-        return [j.trip].concat((j.alternates || []).map(function (a) { return a.trip; }).filter(Boolean));
+        return [j.trip].concat((j.alternates || []).map(function (a) { return a.trip; }).filter(Boolean)).map(function (t) {
+          var leg = t.legs[0], nomes = [];
+          (leg.maneuvers || []).forEach(function (m) { (m.street_names || []).forEach(function (n) { nomes.push(n); }); });
+          return {
+            pts: E.decodePolyline(leg.shape, 6), dist: (t.summary.length || 0) * 1000, dur: t.summary.time || 0, atraso: 0,
+            passos: (leg.maneuvers || []).map(function (m) { return { texto: m.instruction || '', voz: m.verbal_pre_transition_instruction || m.instruction || '', si: m.begin_shape_index }; }),
+            transito: [], desc: rodovias(nomes), fonte: 'valhalla'
+          };
+        });
       });
     });
   }
 
-  function montarRota(trip, i) {
-    var leg = trip.legs[0], pts = E.decodePolyline(leg.shape, 6), idx = E.buildRouteIndex(pts);
-    var passos = (leg.maneuvers || []).map(function (m) {
-      return { texto: m.instruction || '', voz: m.verbal_pre_transition_instruction || m.instruction || '', tipo: m.type, inicio: idx.cum[Math.min(m.begin_shape_index, idx.cum.length - 1)] };
-    });
-    var ruas = [];
-    (leg.maneuvers || []).forEach(function (m) { (m.street_names || []).forEach(function (s) { if (/^(BR|[A-Z]{2})-\d/.test(s) && ruas.indexOf(s) < 0) ruas.push(s); }); });
+  function montarRota(nr, i) {
+    var idx = E.buildRouteIndex(nr.pts), ult = idx.cum.length - 1;
+    var em = function (si) { return idx.cum[Math.max(0, Math.min(si || 0, ult))]; };
+    var pedagios = 0;
     return {
-      n: i, pontos: pts, idx: idx, dist: (trip.summary.length || 0) * 1000, dur: trip.summary.time || 0,
-      desc: ruas.slice(0, 2).join(' e '), passos: passos, osm: {}, achados: [], estado: 'pendente', prog: 0
+      n: i, pontos: nr.pts, idx: idx, dist: nr.dist || idx.total, dur: nr.dur, atraso: nr.atraso, desc: nr.desc, fonte: nr.fonte,
+      passos: nr.passos.map(function (p) { return { texto: p.texto, voz: p.voz, inicio: em(p.si) }; }),
+      transito: nr.transito.map(function (t) { return { si: t.si, ei: t.ei, cat: t.cat }; }),
+      osm: {}, achados: [], pois: [], limites: [], pedagios: pedagios, estado: 'pendente', prog: 0
     };
   }
 
@@ -417,9 +488,9 @@
   function tracar(origem, destino) {
     var token = ++S.tokenRota;
     S.origem = origem;
-    return pedirRotas(origem, destino).then(function (trips) {
+    return pedirRotas(origem, destino).then(function (lista) {
       if (token !== S.tokenRota) return;
-      S.rotas = trips.map(montarRota); S.sel = 0;
+      S.rotas = lista.map(montarRota); S.sel = 0;
       desenharRotas(); enquadrar(); painel('rota'); atualizarPainelRota();
       verificarTodas(token);
     });
@@ -460,6 +531,9 @@
     r.achados = E.findingsFromOverpass({ elements: osm }, r.idx, vehViagem(), CORREDOR)
       .concat(E.findingsFromAntt(S.antt, r.idx), E.findingsFromReports(S.reportes, r.idx))
       .sort(function (a, b) { return a.along - b.along; });
+    r.pois = E.poisFromOverpass({ elements: osm }, r.idx);
+    r.limites = E.speedLimits({ elements: osm }, r.idx, vehViagem(), CORREDOR);
+    r.pedagios = r.pois.filter(function (x) { return x.tipo === 'pedagio'; }).length;
   }
   function contar(r) { var c = { bloqueio: 0, atencao: 0, info: 0 }; r.achados.forEach(function (a) { c[a.nivel]++; }); return c; }
 
@@ -509,6 +583,10 @@
 
   function desenharAchados() {
     var r = S.rotas[S.sel];
+    setDados('pois', fc(!r ? [] : r.pois.map(function (x) { return { type: 'Feature', properties: { tipo: x.tipo, nome: x.nome, lim: x.lim || '' }, geometry: { type: 'Point', coordinates: [x.lng, x.lat] } }; })));
+    setDados('transito', fc(!r ? [] : r.transito.map(function (t) {
+      return { type: 'Feature', properties: { cat: t.cat }, geometry: { type: 'LineString', coordinates: r.pontos.slice(t.si, t.ei + 1).map(ll) } };
+    })));
     setDados('achados', fc(!r ? [] : r.achados.map(function (a) {
       return { type: 'Feature', properties: { nivel: a.nivel, titulo: a.titulo, texto: a.textos.join(' ') }, geometry: { type: 'Point', coordinates: [a.lng, a.lat] } };
     })));
@@ -520,13 +598,14 @@
     if (r.estado === 'verificando' && !c.bloqueio) return ['selo selo-verif', 'Conferindo ' + Math.round(r.prog * 100) + '%'];
     if (c.bloqueio) return ['selo selo-bloqueio', c.bloqueio + (c.bloqueio > 1 ? ' bloqueios' : ' bloqueio')];
     if (c.atencao) return ['selo selo-atencao', c.atencao + ' atenção'];
-    return ['selo selo-ok', 'Livre'];
+    return ['selo selo-ok', 'Sem restrição'];
   }
 
   function atualizarPainelRota() {
     var r = S.rotas[S.sel]; if (!r) return;
     $('#r-tempo').textContent = fmtDur(r.dur);
-    $('#r-dist').textContent = fmtDist(r.dist) + (r.desc ? ' · via ' + r.desc : '') + ' · chegada ' + fmtHora(new Date(Date.now() + r.dur * 1000));
+    $('#r-dist').textContent = fmtDist(r.dist) + (r.desc ? ' · via ' + r.desc : '') + ' · chegada ' + fmtHora(new Date(Date.now() + r.dur * 1000)) +
+      (r.fonte === 'tomtom' ? (r.atraso > 60 ? ' · trânsito +' + fmtDur(r.atraso) : ' · trânsito livre') : '');
     var c = contar(r), st = $('#r-status');
     var vv = vehViagem(), perfil = nomeConjunto(vv) + ' de ' + E.fmtNum(vv.altura) + ' m e ' + E.fmtNum(vv.pbt) + ' t';
     if (r.estado === 'verificando') st.textContent = 'Rota calculada para ' + perfil + '. Conferindo de novo trecho a trecho… ' + Math.round(r.prog * 100) + '%';
@@ -540,7 +619,9 @@
     if (S.rotas.length > 1) S.rotas.forEach(function (x, i) {
       var s = seloRota(x);
       lista.appendChild(el('button', { class: 'rota-op', 'aria-pressed': String(i === S.sel), onclick: function () { escolher(i); } }, [
-        el('span', {}, [el('div', { class: 't', text: fmtDur(x.dur) + ' · ' + fmtDist(x.dist) }), el('div', { class: 's', text: x.desc ? 'via ' + x.desc : 'Rota ' + (i + 1) })]),
+        el('span', {}, [el('div', { class: 't', text: fmtDur(x.dur) + ' · ' + fmtDist(x.dist) }),
+          el('div', { class: 's', text: (x.desc ? 'via ' + x.desc : 'Rota ' + (i + 1)) + (x.pedagios ? ' · ' + x.pedagios + ' pedágio(s)' : '') }),
+          x.atraso > 120 ? el('div', { class: 'trafego', text: '+' + fmtDur(x.atraso) + ' de trânsito' }) : null]),
         el('span', { class: s[0], text: s[1] })
       ]));
     });
@@ -588,12 +669,12 @@
     S.tokenRota++;
     if (r.estado !== 'ok') { r.estado = 'pendente'; verificarRota(r, S.tokenRota); }
     S.rotas = [r]; S.sel = 0; r.n = 0; desenharRotas();
-    S.nav = { r: r, sim: sim, hint: 0, along: 0, falou: {}, fora: 0, ultRecalc: Date.now(), passoFalado: -1 };
+    S.nav = { r: r, sim: sim, hint: 0, along: 0, falou: {}, fora: 0, ultRecalc: Date.now(), ultCheque: Date.now() };
     S.seguir = true;
     painel('nav'); chipsVeiculo('#chips-nav');
     pedirTelaLigada();
     var c = contar(r);
-    falar(sim ? 'Simulação iniciada.' : (c.bloqueio ? 'Atenção, a conferência achou ' + c.bloqueio + ' ponto incompatível nesta rota.' : 'Rota para caminhão calculada. Boa viagem.'));
+    falar(sim ? 'Simulação iniciada.' : (c.bloqueio ? 'Atenção, a conferência achou ' + c.bloqueio + ' ponto incompatível nesta rota.' : 'Rota calculada para o seu veículo. Boa viagem.'));
     if (sim) simular(r); else aoPosicionar(S.pos);
   }
 
@@ -610,6 +691,9 @@
 
   function falaDist(d) { return d < 1000 ? Math.max(50, Math.round(d / 50) * 50) + ' metros' : (d / 1000).toFixed(1).replace('.', ',') + ' quilômetros'; }
 
+  function minusc(t) { return t ? t.charAt(0).toLowerCase() + t.slice(1) : ''; }
+  var POI_FALA = { radar: 'Radar', policia: 'Posto da Polícia Rodoviária', balanca: 'Balança', pedagio: 'Pedágio' };
+
   function passoNavegacao(p) {
     var n = S.nav, r = n.r, near = E.nearestOnRoute(r.idx, p, n.hint);
     if (!near || near.d > 80) {
@@ -621,18 +705,35 @@
     seguirCamera(p);
     var rest = Math.max(0, r.idx.total - n.along), frac = rest / r.idx.total;
     $('#n-eta').textContent = fmtHora(new Date(Date.now() + r.dur * frac * 1000));
-    $('#n-rest').textContent = 'chegada · faltam ' + fmtDist(rest) + ' · ' + fmtDur(r.dur * frac);
+    var posto = null;
+    for (var q = 0; q < r.pois.length; q++) if (r.pois[q].tipo === 'posto' && r.pois[q].along > n.along) { posto = r.pois[q]; break; }
+    $('#n-rest').textContent = 'chegada · faltam ' + fmtDist(rest) + ' · ' + fmtDur(r.dur * frac) +
+      (posto ? ' · posto em ' + fmtDist(posto.along - n.along) + (posto.nome ? ' (' + posto.nome + ')' : '') : '');
     if (rest < 40) { falar('Você chegou ao destino.'); encerrarNav('Você chegou ao destino.'); return; }
 
+    // manobras: avisos a ~1 km, ~300 m e "agora", como no Waze
     var prox = null, ip = -1;
     for (var i = 0; i < r.passos.length; i++) if (r.passos[i].inicio > n.along + 5) { prox = r.passos[i]; ip = i; break; }
     if (prox) {
       var dm = prox.inicio - n.along;
       $('#manobra-dist').textContent = fmtDist(dm);
       $('#manobra-txt').textContent = prox.texto;
-      if (dm < 500 && n.passoFalado !== ip) { n.passoFalado = ip; falar('Em ' + falaDist(dm) + ', ' + prox.voz); }
+      var faixaM = dm <= 60 ? 'agora' : dm <= 350 ? '300' : dm <= 1100 && prox.inicio - (i > 0 ? r.passos[i - 1].inicio : 0) > 1300 ? '1000' : null;
+      if (faixaM && !n.falou['m' + ip + faixaM]) {
+        n.falou['m' + ip + faixaM] = 1;
+        falar(faixaM === 'agora' ? 'Agora, ' + minusc(prox.voz) : 'Em ' + (faixaM === '1000' ? '1 quilômetro' : falaDist(dm)) + ', ' + minusc(prox.voz));
+      }
     } else { $('#manobra-dist').textContent = fmtDist(rest); $('#manobra-txt').textContent = 'Siga até o destino'; }
 
+    // limite de velocidade da via
+    var lim = E.limitAt(r.limites, n.along), kmh = p.speed != null ? p.speed * 3.6 : 0;
+    $('#placa-vel').classList.toggle('oculto', !lim);
+    if (lim) $('#lim-vel').textContent = lim;
+    var acima = lim && kmh > lim + 5;
+    $('#velocimetro').classList.toggle('acima', !!acima);
+    if (acima && n.limFalado !== lim + ':' + Math.round(n.along / 2000)) { n.limFalado = lim + ':' + Math.round(n.along / 2000); falar('Atenção, velocidade máxima ' + lim + '.'); }
+
+    // alertas: restrições primeiro; depois radar, balança, polícia e pedágio
     var al = null;
     for (var k = 0; k < r.achados.length; k++) { var a = r.achados[k]; if (a.nivel !== 'info' && a.along > n.along - 20) { al = a; break; } }
     var aviso = $('#aviso');
@@ -643,25 +744,77 @@
       $('#aviso-txt').textContent = al.textos.join(' ');
       var faixa = dist < 600 ? 'perto' : 'longe';
       if (!n.falou[al.id + faixa]) { n.falou[al.id + faixa] = 1; falar((al.nivel === 'bloqueio' ? 'Cuidado. ' : 'Atenção. ') + 'Em ' + falaDist(dist) + ', ' + al.titulo + '. ' + al.textos[0]); }
-    } else aviso.className = 'oculto';
+    } else {
+      var pi = null;
+      for (var z = 0; z < r.pois.length; z++) { var x = r.pois[z]; if (x.tipo !== 'posto' && x.along > n.along - 20) { pi = x; break; } }
+      if (pi && pi.along - n.along < 1200) {
+        var dp = Math.max(0, pi.along - n.along), limR = pi.lim || (pi.tipo === 'radar' ? E.limitAt(r.limites, pi.along) : null);
+        aviso.className = 'info';
+        $('#aviso-titulo').textContent = NOME_POI[pi.tipo] + ' em ' + fmtDist(dp);
+        $('#aviso-txt').textContent = (limR ? 'Limite ' + limR + ' km/h. ' : '') + (pi.nome || '');
+        var chave = 'p' + pi.tipo + Math.round(pi.along);
+        if (dp < 900 && !n.falou[chave]) { n.falou[chave] = 1; falar(POI_FALA[pi.tipo] + ' em ' + falaDist(dp) + (limR ? '. Limite ' + limR + '.' : '.')); }
+      } else aviso.className = 'oculto';
+    }
+    if (!n.sim && Date.now() - n.ultCheque > 180000) { n.ultCheque = Date.now(); procurarRotaMelhor(p); }
     posFlutuantes();
   }
 
+  // Ao recalcular, sempre pega a rota mais rápida entre as opções novas
   function recalcular(p) {
     var n = S.nav; n.ultRecalc = Date.now();
     toast('Saiu da rota. Recalculando…'); falar('Recalculando.');
     var token = ++S.tokenRota;
-    pedirRotas(p, S.destino).then(function (trips) {
+    pedirRotas(p, S.destino).then(function (lista) {
       if (!S.nav || token !== S.tokenRota) return;
-      var r = montarRota(trips[0], 0);
-      S.rotas = [r]; S.sel = 0; n.r = r; n.hint = 0; n.along = 0; n.falou = {}; n.passoFalado = -1;
-      desenharRotas(); verificarRota(r, token);
+      lista.sort(function (a, b) { return a.dur - b.dur; });
+      trocarRota(montarRota(lista[0], 0), token);
     }).catch(function (e) { toast(e.message, 6000); });
   }
+  function trocarRota(r, token) {
+    var n = S.nav;
+    S.rotas = [r]; S.sel = 0; n.r = r; n.hint = 0; n.along = 0; n.falou = {};
+    desenharRotas(); verificarRota(r, token || S.tokenRota);
+  }
+
+  // A cada 3 min compara a rota atual com as alternativas e oferece a mais rápida (como o Waze)
+  function sobreposicao(a, r, aPartir) {
+    var amostra = 12, dentro = 0;
+    for (var i = 1; i <= amostra; i++) {
+      var pt = a.pts[Math.floor(i * (a.pts.length - 1) / (amostra + 1))], m = E.nearestOnRoute(r.idx, pt);
+      if (m && m.d < 60 && m.along >= aPartir - 100) dentro++;
+    }
+    return dentro / amostra;
+  }
+  function procurarRotaMelhor(p) {
+    var n = S.nav, r = n.r;
+    pedirRotas(p, S.destino).then(function (lista) {
+      if (!S.nav || S.nav.r !== r) return;
+      var atual = null, melhor = null;
+      lista.forEach(function (x) { if (sobreposicao(x, r, n.along) > 0.8) { if (!atual || x.dur < atual.dur) atual = x; } else if (!melhor || x.dur < melhor.dur) melhor = x; });
+      var tempoAtual = atual ? atual.dur : r.dur * ((r.idx.total - n.along) / r.idx.total);
+      if (melhor && melhor.dur < tempoAtual - 180 && melhor.dur < tempoAtual * 0.95) oferecerRota(melhor, Math.round((tempoAtual - melhor.dur) / 60));
+    }).catch(function () { /* tenta de novo no próximo ciclo */ });
+  }
+  function oferecerRota(nr, min) {
+    S.oferta = nr;
+    $('#oferta-titulo').textContent = 'Caminho ' + min + ' min mais rápido';
+    $('#oferta-txt').textContent = (nr.desc ? 'Via ' + nr.desc + '. ' : '') + 'Rota calculada para o seu veículo.';
+    $('#oferta').classList.remove('oculto');
+    falar('Encontrei um caminho ' + min + ' minutos mais rápido. Toque em aceitar para trocar.');
+    clearTimeout(S.ofertaT); S.ofertaT = setTimeout(function () { $('#oferta').classList.add('oculto'); S.oferta = null; }, 25000);
+  }
+  $('#oferta-aceitar').addEventListener('click', function () {
+    $('#oferta').classList.add('oculto');
+    if (S.oferta && S.nav) { var t = ++S.tokenRota; trocarRota(montarRota(S.oferta, 0), t); falar('Rota atualizada.'); }
+    S.oferta = null;
+  });
+  $('#oferta-manter').addEventListener('click', function () { $('#oferta').classList.add('oculto'); S.oferta = null; });
 
   function encerrarNav(msg) {
     if (!S.nav) return;
     clearInterval(S.nav.timer); S.nav = null; soltarTela();
+    $('#placa-vel').classList.add('oculto'); $('#oferta').classList.add('oculto'); $('#velocimetro').classList.remove('acima');
     toast(msg); limparRota();
   }
 
@@ -690,19 +843,29 @@
         [el('span', { class: 't', text: o.nome }), el('span', { class: 's', text: o.sub })]));
     });
   }
+  function carrPermitida(c, id) {
+    if (!id) return false;
+    if (c.carrs) return c.carrs.indexOf(id) >= 0;
+    if (c.semCarrs) return c.semCarrs.indexOf(id) < 0;
+    return true;
+  }
   function sugestaoMedidas() {
     var c = achar(COMPOSICOES, wiz.comp), k = achar(CARROCERIAS, wiz.carr);
     var mesmo = S.veh.comp === wiz.comp && S.veh.carr === wiz.carr;
     if (mesmo) return S.veh;
-    var alt = k.alt;
+    var alt = c.alt || (k ? k.alt : 4.4);
     if (c.id === 'vuc') alt = Math.min(alt, 3.3);
     return { altura: alt, largura: c.larg, comprimento: c.comp, pbt: c.pbt, perigoso: S.veh.perigoso };
   }
   function irPasso(n) {
     wiz.passo = n;
     [1, 2, 3].forEach(function (i) { $('#vp-' + i).classList.toggle('oculto', i !== n); $('#vp-ind-' + i).classList.toggle('on', i <= n); });
-    if (n === 1) opcoes('#op-comp', COMPOSICOES, wiz.comp, function (o) { wiz.comp = o.id; irPasso(2); });
-    if (n === 2) opcoes('#op-carr', CARROCERIAS, wiz.carr, function (o) { wiz.carr = o.id; irPasso(3); });
+    var cc = achar(COMPOSICOES, wiz.comp) || {};
+    if (n === 1) opcoes('#op-comp', COMPOSICOES, wiz.comp, function (o) {
+      wiz.comp = o.id;
+      if (o.semCarr) { wiz.carr = null; irPasso(3); } else { if (!carrPermitida(o, wiz.carr)) wiz.carr = null; irPasso(2); }
+    });
+    if (n === 2) opcoes('#op-carr', CARROCERIAS.filter(function (k) { return carrPermitida(cc, k.id); }), wiz.carr, function (o) { wiz.carr = o.id; irPasso(3); });
     if (n === 3) {
       var m = sugestaoMedidas(), k = achar(CARROCERIAS, wiz.carr);
       $('#v-resumo').textContent = nomeConjunto({ comp: wiz.comp, carr: wiz.carr }) + (k && k.carga ? '. Como a carga define a altura, o app vai pedir a altura do dia antes de cada rota.' : '.');
@@ -715,11 +878,18 @@
     $('#v-avancar').textContent = n === 3 ? 'Salvar veículo' : 'Continuar';
     $('#v-avancar').disabled = (n === 1 && !wiz.comp) || (n === 2 && !wiz.carr);
   }
-  $('#v-voltar').addEventListener('click', function () { if (wiz.passo === 1) fechar('#m-veiculo'); else irPasso(wiz.passo - 1); });
-  $('#v-avancar').addEventListener('click', function () { if (wiz.passo < 3) irPasso(wiz.passo + 1); else salvarVeiculo(); });
+  $('#v-voltar').addEventListener('click', function () {
+    if (wiz.passo === 1) fechar('#m-veiculo');
+    else if (wiz.passo === 3 && (achar(COMPOSICOES, wiz.comp) || {}).semCarr) irPasso(1);
+    else irPasso(wiz.passo - 1);
+  });
+  $('#v-avancar').addEventListener('click', function () {
+    if (wiz.passo === 1 && (achar(COMPOSICOES, wiz.comp) || {}).semCarr) irPasso(3);
+    else if (wiz.passo < 3) irPasso(wiz.passo + 1); else salvarVeiculo();
+  });
   $('#form-veiculo').addEventListener('submit', function (e) { e.preventDefault(); if (wiz.passo === 3) salvarVeiculo(); });
   function salvarVeiculo() {
-    var v = { comp: wiz.comp, carr: wiz.carr, altura: num($('#v-altura').value), largura: num($('#v-largura').value), comprimento: num($('#v-comprimento').value), pbt: num($('#v-pbt').value), perigoso: $('#v-perigoso').checked };
+    var v = { comp: wiz.comp, carr: wiz.carr, leve: !!(achar(COMPOSICOES, wiz.comp) || {}).leve, altura: num($('#v-altura').value), largura: num($('#v-largura').value), comprimento: num($('#v-comprimento').value), pbt: num($('#v-pbt').value), perigoso: $('#v-perigoso').checked };
     if (!v.altura || v.altura < 1.5 || v.altura > 6 || !v.largura || v.largura > 4 || !v.comprimento || v.comprimento > 40 || !v.pbt || v.pbt > 200) {
       toast('Confira os números: altura em metros (ex.: 4,40) e peso em toneladas (ex.: 57).', 5000); return;
     }
@@ -774,6 +944,17 @@
     setDados('reportes', fc(S.reportes.map(function (rp) { return { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [rp.lng, rp.lat] } }; })));
   }
 
+  // ---------- trânsito ao vivo (chave gratuita da TomTom, salva só neste aparelho) ----------
+  function rotuloTransito() { $('#btn-transito').textContent = chaveTomTom() ? 'Trânsito: ligado' : 'Trânsito ao vivo'; }
+  $('#btn-transito').addEventListener('click', function () {
+    var atual = LS.get('tomtom', '');
+    var k = window.prompt('Cole a chave gratuita da TomTom para ver o trânsito ao vivo.\nDeixe em branco para desligar.', atual || '');
+    if (k === null) return;
+    LS.set('tomtom', k.trim()); rotuloTransito();
+    toast(k.trim() ? 'Trânsito ao vivo ligado. As próximas rotas já consideram o trânsito.' : 'Trânsito ao vivo desligado.', 4000);
+  });
+  rotuloTransito();
+
   // ---------- instalar como app ----------
   var promptInstalar = null;
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); promptInstalar = e; $('#btn-instalar').hidden = false; });
@@ -787,5 +968,9 @@
   chipsVeiculo('#chips-veiculo');
   painel('inicio');
   criarMapa();
-  if (!S.veh.comp) setTimeout(abrirVeiculo, 400); // primeiro acesso: cadastro do veículo
+  // Abertura: motorista ou empresa (a escolha de motorista fica lembrada)
+  function entrarMotorista() { LS.set('perfil', 'motorista'); fechar('#portas'); if (!S.veh.comp) setTimeout(abrirVeiculo, 300); }
+  $('#porta-motorista').addEventListener('click', entrarMotorista);
+  $('#porta-empresa').addEventListener('click', function () { location.href = 'painel.html'; });
+  if (LS.get('perfil', '') === 'motorista') { if (!S.veh.comp) setTimeout(abrirVeiculo, 400); } else abrir('#portas');
 })();

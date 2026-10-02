@@ -1,4 +1,4 @@
-# TruckRoute — MVP fase 1 (versão 3, custo zero)
+# TruckRoute — MVP fase 1 (versão 4)
 
 App web instalável (PWA) de navegação para caminhões. Abre no navegador do celular e vai para a tela inicial como um app comum.
 
@@ -23,6 +23,18 @@ App web instalável (PWA) de navegação para caminhões. Abre no navegador do c
 **Limite importante:** a ANTT publica onde ficam as pontes e viadutos das rodovias concedidas, mas não a altura livre. Por isso esses pontos aparecem como "atenção". Os limites de altura e peso vêm do OpenStreetMap e dos reportes dos motoristas.
 
 ---
+
+## Novidades da versão 4
+
+- **Trânsito ao vivo (opcional):** toque em "Trânsito ao vivo" e cole a chave gratuita da TomTom. A rota passa a considerar o trânsito, mostra os trechos lentos em vermelho e amarelo e informa o atraso. Sem a chave, o app continua funcionando, sem trânsito.
+- **Rota melhor durante a viagem:** a cada 3 minutos o app compara a rota atual com as alternativas e avisa "Caminho X min mais rápido". Um toque em Aceitar troca a rota. Ao sair da rota, o recálculo escolhe sempre a opção mais rápida.
+- **Opções de trajeto:** cada alternativa mostra tempo, km, pedágios e atraso de trânsito.
+- **Postos, polícia, balança, radar e pedágio** no mapa, com aviso falado antes de radar, balança, PRF e pedágio. Durante a viagem, o painel mostra a distância até o próximo posto.
+- **Limite de velocidade da via:** placa na tela e aviso falado quando passar do limite. Para caminhão, usa o limite de pesados quando a via tem essa informação.
+- **Falas antes das manobras:** a cerca de 1 km, a 300 m e "agora".
+- **Carro de passeio e Fiorino** no cadastro, com rota de carro (sem as restrições de caminhão).
+
+Fontes dos pontos e limites: OpenStreetMap, conferido ao longo de cada rota. A cobertura varia por região. Os reportes dos motoristas completam os pontos que faltam.
 
 ## Instalação (uns 10 minutos, só GitHub)
 

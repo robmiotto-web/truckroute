@@ -135,6 +135,21 @@ button{cursor:pointer}
 #velocimetro small{font-size:10.5px;color:var(--texto2)}
 #velocimetro #gps-prec{font-size:9.5px;margin-top:2px}
 .res .ico{font-size:12px;color:var(--placa);font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+#oferta{background:#1F2A1F;border:1.5px solid var(--ok);border-radius:14px;padding:12px 14px;font-size:15px;line-height:1.35}
+#oferta strong{display:block;font-size:17px;color:#CDE8D1}
+#aviso.info{background:#22303F;color:#E6EEFF}
+#placa-vel{position:fixed;left:94px;z-index:4;width:60px;height:60px;border-radius:30px;background:#fff;border:6px solid #E5533D;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+#placa-vel .num{color:#14171A;font-size:24px}
+#velocimetro.acima{border-color:#E5533D;background:#3A1712}
+.trafego{font-size:12.5px;font-weight:700;color:#FF8A70}
+#portas{position:fixed;inset:0;z-index:30;background:var(--chao);display:flex;align-items:center;justify-content:center;padding:24px}
+.cartao-portas{width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px}
+.marca-portas{display:flex;align-items:center;gap:12px;font-family:'Barlow Condensed',sans-serif;font-size:40px;font-weight:700;margin-bottom:10px}
+.marca-portas i{width:48px;height:48px;border-radius:12px;background:var(--placa);display:flex;align-items:center;justify-content:center}
+.porta{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;padding:20px;border-radius:18px;border:none;background:var(--placa);color:var(--placa-esc);min-height:96px}
+.porta strong{font-size:22px}
+.porta span{font-size:15px;line-height:1.35}
+.porta-clara{background:var(--campo);color:var(--texto);border:1.5px solid var(--linha2)}
 #aviso-geral{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + var(--base));z-index:40;background:#F3F4F5;color:#14171A;font-weight:600;padding:12px 16px;border-radius:12px;max-width:92vw;font-size:15px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -142,6 +157,15 @@ button{cursor:pointer}
 <body>
 
 <div id="mapa" role="application" aria-label="Mapa"></div>
+
+<!-- Abertura: duas portas de entrada -->
+<div id="portas" class="oculto" role="dialog" aria-modal="true" aria-labelledby="t-portas">
+  <div class="cartao-portas">
+    <div class="marca-portas"><i><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#14171A" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg></i><span id="t-portas">TruckRoute</span></div>
+    <button class="porta" id="porta-motorista"><strong>Sou motorista</strong><span>Rota segura para o seu veículo, trânsito e alertas na estrada</span></button>
+    <button class="porta porta-clara" id="porta-empresa"><strong>Sou empresa</strong><span>Encontre motoristas chegando na sua região e ofereça cargas</span></button>
+  </div>
+</div>
 
 <!-- Busca e faixas do topo -->
 <div id="busca">
@@ -162,6 +186,10 @@ button{cursor:pointer}
     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V6"/><path d="M6 11l6-6 6 6"/></svg>
     <div><div class="dist num" id="manobra-dist"></div><div class="txt" id="manobra-txt"></div></div>
   </div>
+  <div id="oferta" class="oculto" role="alert">
+    <div><strong id="oferta-titulo"></strong><span id="oferta-txt"></span></div>
+    <div class="duas" style="margin-top:10px"><button class="btn btn-escuro" id="oferta-manter">Manter</button><button class="btn btn-placa" id="oferta-aceitar">Aceitar</button></div>
+  </div>
   <div id="aviso" class="oculto" role="alert">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;margin-top:2px"><path d="M12 3l10 18H2z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg>
     <div><strong id="aviso-titulo"></strong><span id="aviso-txt"></span></div>
@@ -170,6 +198,7 @@ button{cursor:pointer}
 
 <!-- Velocidade e GPS -->
 <div id="velocimetro" class="oculto" aria-live="off"><span class="num" id="vel">0</span><small>km/h</small><small id="gps-prec"></small></div>
+<div id="placa-vel" class="oculto" aria-label="Limite de velocidade"><span class="num" id="lim-vel"></span></div>
 
 <!-- Botões flutuantes -->
 <div id="flutuantes">
@@ -187,8 +216,10 @@ button{cursor:pointer}
     <p class="dica" id="dica-inicio">Digite o destino ou toque no mapa. A rota já sai calculada para a altura, o peso e o comprimento do seu conjunto.</p>
     <div class="duas">
       <button class="btn btn-escuro" id="btn-veiculo">Meu veículo</button>
-      <button class="btn btn-escuro" id="btn-instalar" hidden>Instalar app</button>
+      <button class="btn btn-escuro" id="btn-transito">Trânsito ao vivo</button>
+      <button class="btn btn-escuro" id="btn-instalar" hidden style="grid-column:1/-1">Instalar app</button>
     </div>
+    <p class="credito"><a href="painel.html" style="color:var(--placa);font-weight:700">Sou empresa → painel do embarcador</a></p>
     <p class="credito">Mapa © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">colaboradores do OpenStreetMap</a> · <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> · rotas <a href="https://valhalla.openstreetmap.de" target="_blank" rel="noopener">Valhalla/FOSSGIS</a></p>
   </div>
 
