@@ -6,6 +6,7 @@
 <title>TruckRoute Empresas — Painel do embarcador</title>
 <link rel="icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <style>
 :root{--fundo:#F4F2EE;--cartao:#FFFFFF;--linha:#E4E0D8;--texto:#14171A;--texto2:#555E66;--placa:#F2A900;--escuro:#14171A;--ok:#1E6B2E;--ok-fundo:#E7F3E9;--azul:#1B6BE0}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--fundo:#0E1114;--cartao:#161A1E;--linha:#262B31;--texto:#F3F4F5;--texto2:#A7B0B9;--ok:#8FDC99;--ok-fundo:#1F2A1F}}
@@ -54,6 +55,26 @@ td .s{font-size:13px;color:var(--texto2)}
 .preview .acoes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
 .preview .acoes span{min-height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:700}
 .nota{font-size:13px;color:var(--texto2);line-height:1.45;margin-top:12px}
+fieldset{border:1px solid var(--linha);border-radius:12px;padding:10px 12px 12px;margin:0 0 10px;display:flex;flex-direction:column;gap:8px}
+legend{font-weight:700;font-size:14px;padding:0 4px}
+fieldset input{width:100%}
+.busca{position:relative}
+.sug{position:absolute;left:0;right:0;top:46px;z-index:5;background:var(--cartao);border:1px solid var(--linha);border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,.15);max-height:260px;overflow-y:auto}
+.sug button{display:block;width:100%;text-align:left;background:none;border:none;padding:10px 12px;min-height:44px}
+.sug button:hover{background:var(--fundo)}
+.sug small{display:block;color:var(--texto2);font-size:12.5px}
+.oculto{display:none!important}
+.rota-info{font-size:14px;color:var(--texto2);margin:0 0 10px}
+.rota-info strong{color:var(--texto)}
+#mapa-carga{height:180px;border-radius:12px;overflow:hidden;margin-bottom:10px}
+.check{flex-direction:row;align-items:center;gap:8px;color:var(--texto);font-size:15px}
+.check input{width:20px;height:20px;accent-color:var(--placa)}
+.exig{display:grid;grid-template-columns:1fr 1fr;gap:0 10px;margin-bottom:6px}
+.piso{background:var(--fundo);border-radius:12px;padding:10px 12px;font-size:14px;margin-bottom:10px;line-height:1.45}
+.piso .v{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700}
+.piso button{background:none;border:none;color:var(--azul);font-weight:700;padding:4px 0;min-height:32px}
+.alerta{color:#B3261E;font-weight:700}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .alerta{color:#FF8A70}}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:#14171A;color:#F3F4F5;padding:12px 16px;border-radius:12px;font-weight:600;display:none;max-width:92vw}
 </style>
 </head>
@@ -67,18 +88,38 @@ td .s{font-size:13px;color:var(--texto2)}
   <section class="cartao" aria-labelledby="t-oferta">
     <h2 id="t-oferta">Publicar carga</h2>
     <p class="sub">A oferta vai, em pop-up, para os motoristas compatíveis que estão chegando na cidade de coleta.</p>
-    <form id="f-oferta">
+    <form id="f-oferta" autocomplete="off">
+      <fieldset><legend>Coleta</legend>
+        <div class="busca"><input id="o-origem" placeholder="Endereço, empresa ou cidade" required aria-label="Endereço de coleta"><div class="sug oculto" id="s-origem"></div></div>
+        <input id="o-dt-col" type="datetime-local" required aria-label="Data e hora da coleta">
+      </fieldset>
+      <fieldset><legend>Entrega</legend>
+        <div class="busca"><input id="o-destino" placeholder="Endereço, empresa ou cidade" required aria-label="Endereço de entrega"><div class="sug oculto" id="s-destino"></div></div>
+        <input id="o-dt-ent" type="datetime-local" required aria-label="Data e hora da entrega">
+      </fieldset>
+      <div class="rota-info" id="rota-info">Escolha coleta e entrega para calcular a rota de caminhão.</div>
+      <div id="mapa-carga" class="oculto"></div>
       <div class="dupla">
-        <label>Coleta em<select id="o-origem"></select></label>
-        <label>Entrega em<input id="o-destino" required placeholder="Ex.: Rondonópolis MT"></label>
+        <label>Tipo de carga<select id="o-tipo">
+          <option value="geral">Carga geral</option><option value="solido">Granel sólido</option><option value="liquido">Granel líquido</option>
+          <option value="frigo">Frigorificada</option><option value="perigosa">Perigosa</option><option value="conteiner">Conteinerizada</option><option value="neogranel">Neogranel</option></select></label>
+        <label>Eixos do veículo<select id="o-eixos"><option>2</option><option>3</option><option>4</option><option>5</option><option selected>6</option><option>7</option><option>9</option></select></label>
       </div>
       <div class="dupla">
         <label>Carroceria<select id="o-carr"></select></label>
         <label>Peso (t)<input id="o-peso" inputmode="decimal" required value="30"></label>
       </div>
+      <label class="check"><input type="checkbox" id="o-retorno" checked> Frete de retorno (oferta para quem está voltando)</label>
+      <div class="piso" id="piso">O piso mínimo da ANTT aparece aqui depois da rota.</div>
       <div class="dupla">
         <label>Valor do frete (R$)<input id="o-valor" inputmode="decimal" required placeholder="Ex.: 14800"></label>
-        <label>Coleta<select id="o-janela"><option>Hoje</option><option selected>Amanhã cedo</option><option>Em 2 dias</option></select></label>
+        <label>Pagamento<select id="o-pgto"><option>À vista na entrega</option><option selected>Em 5 dias</option><option>Em 15 dias</option><option>Em 30 dias</option></select></label>
+      </div>
+      <div class="exig" role="group" aria-label="Exigências">
+        <label class="check"><input type="checkbox" value="Rastreador" checked> Rastreador</label>
+        <label class="check"><input type="checkbox" value="Seguro/GR" checked> Seguro / GR</label>
+        <label class="check"><input type="checkbox" value="Lona"> Lona</label>
+        <label class="check"><input type="checkbox" value="Ajudante"> Ajudante</label>
       </div>
       <button class="btn btn-placa" type="submit">Enviar oferta aos compatíveis</button>
     </form>
@@ -87,9 +128,10 @@ td .s{font-size:13px;color:var(--texto2)}
       <div style="font-size:17px;font-weight:700;margin-top:6px" id="pv-rota">Carga de retorno saindo de …</div>
       <div class="v" id="pv-valor">R$ —</div>
       <div style="font-size:14px;color:#A7B0B9" id="pv-info">Perto da sua descarga</div>
+      <div style="font-size:13px;color:#D5DAE0;margin-top:4px" id="pv-exig"></div>
       <div class="acoes"><span style="background:#22282E">Recusar</span><span style="background:#F2A900;color:#14171A">Aceitar</span></div>
     </div>
-    <p class="nota">Antes de publicar, confira se o valor respeita o piso mínimo de frete da ANTT. Só aparecem motoristas que autorizaram compartilhar o veículo e a previsão de chegada (LGPD).</p>
+    <p class="nota">Vale-pedágio é obrigatório e pago à parte do frete. Piso calculado pela Resolução ANTT nº 6.084/2026 (tabela A); para fechar contrato, confirme na <a href="https://calculadorafrete.antt.gov.br" target="_blank" rel="noopener">calculadora oficial da ANTT</a>. Só aparecem motoristas que autorizaram compartilhar o veículo e a previsão de chegada (LGPD).</p>
   </section>
 
   <section>
@@ -117,52 +159,169 @@ td .s{font-size:13px;color:var(--texto2)}
   </section>
 </main>
 <div id="toast" role="status"></div>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
 (function () {
   'use strict';
   var $ = function (s) { return document.querySelector(s); };
+  var BUSCA = 'https://photon.komoot.io/api/', ROTAS = 'https://valhalla1.openstreetmap.de/route';
   var CARR = ['Sider', 'Baú', 'Baú frigorífico', 'Graneleiro', 'Grade baixa', 'Basculante', 'Tanque', 'Porta-contêiner'];
+  // Piso mínimo ANTT — Tabela A (carga lotação), carga geral. Resolução ANTT nº 6.084/2026, DOU 17/07/2026.
+  var PISO = { norma: 'Resolução ANTT nº 6.084/2026', geral: { 2: [3.9826, 451.84], 3: [5.0977, 541.86], 4: [5.7822, 588.86], 5: [6.6718, 657.56], 6: [7.3547, 671.93], 7: [8.0927, 831.66], 9: [9.2027, 903.32] } };
   var agora = Date.now(), h = 3600000;
+  var C = { 'Santos SP': [-23.96, -46.33], 'Contagem MG': [-19.93, -44.05], 'Paranaguá PR': [-25.52, -48.51], 'Campinas SP': [-22.91, -47.06] };
   // Demonstração: nomes abreviados, como no app real (privacidade)
   var M = [
-    ['José S.', 'Bitrem 7 eixos', 'Graneleiro', 57, 'Santos SP', 2, 'Rondonópolis MT', 4.9, 214],
-    ['Marcos R.', 'Rodotrem 9 eixos', 'Graneleiro', 74, 'Santos SP', 5, 'Sorriso MT', 4.8, 96],
-    ['Ana L.', 'Carreta LS 6 eixos', 'Sider', 48.5, 'Contagem MG', 1, 'Campinas SP', 4.9, 152],
-    ['Paulo C.', 'Carreta LS 6 eixos', 'Baú', 48.5, 'Contagem MG', 7, 'Rio de Janeiro RJ', 4.7, 41],
-    ['Ricardo F.', 'Bitrem 7 eixos', 'Graneleiro', 57, 'Paranaguá PR', 3, 'Rio Verde GO', 5.0, 308],
-    ['Edson M.', 'Truck', 'Baú frigorífico', 23, 'Contagem MG', 4, 'Belo Horizonte MG', 4.6, 77],
-    ['Cláudia P.', 'Carreta 5 eixos', 'Grade baixa', 41.5, 'Campinas SP', 9, 'Contagem MG', 4.8, 63],
-    ['Luiz H.', 'Vanderléia', 'Sider', 53, 'Santos SP', 20, 'Goiânia GO', 4.9, 188],
-    ['Rafael T.', 'Carreta LS 6 eixos', 'Tanque', 48.5, 'Paranaguá PR', 11, 'Cuiabá MT', 4.7, 59],
-    ['Sérgio A.', 'Bitruck', 'Baú', 29, 'Campinas SP', 6, 'São Paulo SP', 4.5, 33],
-    ['Wagner D.', 'Carreta 5 eixos', 'Porta-contêiner', 41.5, 'Santos SP', 13, 'Campinas SP', 4.8, 120],
-    ['Fábio N.', 'Toco', 'Baú', 16, 'Contagem MG', 30, 'Betim MG', 4.9, 18]
-  ].map(function (x, i) { return { id: i, nome: x[0], conj: x[1], carr: x[2], cap: x[3], cidade: x[4], eta: agora + x[5] * h, volta: x[6], nota: x[7], viagens: x[8], status: '' }; });
-  var cidades = M.map(function (m) { return m.cidade; }).filter(function (c, i, a) { return a.indexOf(c) === i; }).sort();
+    ['José S.', 'Bitrem', 7, 'Graneleiro', 57, 'Santos SP', 2, 'Rondonópolis MT', 4.9, 214],
+    ['Marcos R.', 'Rodotrem', 9, 'Graneleiro', 74, 'Santos SP', 5, 'Sorriso MT', 4.8, 96],
+    ['Ana L.', 'Carreta LS', 6, 'Sider', 48.5, 'Contagem MG', 1, 'Campinas SP', 4.9, 152],
+    ['Paulo C.', 'Carreta LS', 6, 'Baú', 48.5, 'Contagem MG', 7, 'Rio de Janeiro RJ', 4.7, 41],
+    ['Ricardo F.', 'Bitrem', 7, 'Graneleiro', 57, 'Paranaguá PR', 3, 'Rio Verde GO', 5.0, 308],
+    ['Edson M.', 'Truck', 3, 'Baú frigorífico', 23, 'Contagem MG', 4, 'Belo Horizonte MG', 4.6, 77],
+    ['Cláudia P.', 'Carreta 5 eixos', 5, 'Grade baixa', 41.5, 'Campinas SP', 9, 'Contagem MG', 4.8, 63],
+    ['Luiz H.', 'Vanderléia', 6, 'Sider', 53, 'Santos SP', 20, 'Goiânia GO', 4.9, 188],
+    ['Rafael T.', 'Carreta LS', 6, 'Tanque', 48.5, 'Paranaguá PR', 11, 'Cuiabá MT', 4.7, 59],
+    ['Sérgio A.', 'Bitruck', 4, 'Baú', 29, 'Campinas SP', 6, 'São Paulo SP', 4.5, 33],
+    ['Wagner D.', 'Carreta 5 eixos', 5, 'Porta-contêiner', 41.5, 'Santos SP', 13, 'Campinas SP', 4.8, 120],
+    ['Fábio N.', 'Toco', 2, 'Baú', 16, 'Contagem MG', 30, 'Betim MG', 4.9, 18]
+  ].map(function (x, i) { return { id: i, nome: x[0], conj: x[1] + ' ' + x[2] + ' eixos', eixos: x[2], carr: x[3], cap: x[4], cidade: x[5], pos: C[x[5]], eta: agora + x[6] * h, volta: x[7], nota: x[8], viagens: x[9], status: '' }; });
+  var cidades = Object.keys(C).sort();
   function opcoes(sel, lista, primeira) { sel.innerHTML = ''; if (primeira) sel.add(new Option(primeira, '')); lista.forEach(function (x) { sel.add(new Option(x, x)); }); }
-  opcoes($('#f-cidade'), cidades, 'Todas as cidades'); opcoes($('#f-carr'), CARR, 'Todas as carrocerias');
-  opcoes($('#o-origem'), cidades); opcoes($('#o-carr'), CARR);
-  $('#o-origem').value = 'Santos SP'; $('#o-carr').value = 'Graneleiro'; $('#f-cidade').value = 'Santos SP';
-  var enviadas = 0, tt;
-  function toast(t) { var e = $('#toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(tt); tt = setTimeout(function () { e.style.display = 'none'; }, 3500); }
-  function hora(ms) { var d = new Date(ms); return d.toLocaleDateString('pt-BR', { weekday: 'short' }) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
+  opcoes($('#f-cidade'), cidades, 'Todas as cidades'); opcoes($('#f-carr'), CARR, 'Todas as carrocerias'); opcoes($('#o-carr'), CARR);
+  $('#o-carr').value = 'Graneleiro';
+  var F = { col: null, ent: null, rota: null }, enviadas = 0, tt;
+  function toast(t) { var e = $('#toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(tt); tt = setTimeout(function () { e.style.display = 'none'; }, 4000); }
+  function brl(v) { return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }); }
+  function num(v) { var n = parseFloat(String(v).replace(/\./g, '').replace(',', '.')); return isNaN(n) ? null : n; }
+  function dist(a, b) { var r = Math.PI / 180, x = (b[1] - a[1]) * r * Math.cos((a[0] + b[0]) * r / 2), y = (b[0] - a[0]) * r; return Math.sqrt(x * x + y * y) * 6371; }
+  function hora(ms) { var d = new Date(ms); return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
   function emH(ms) { var x = Math.round((ms - Date.now()) / h); return x <= 0 ? 'chegando' : 'em ' + x + 'h'; }
+  function local(ms) { var d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); }
+  $('#o-dt-col').value = local(agora + 24 * h); $('#o-dt-ent').value = local(agora + 72 * h);
+
+  // ---------- busca de endereço com sugestões ----------
+  function textoLugar(p) {
+    var rua = p.street ? p.street + (p.housenumber ? ', ' + p.housenumber : '') : '';
+    var nome = p.name || rua || p.city || 'Local', resto = [];
+    if (rua && rua !== nome) resto.push(rua);
+    [p.city, p.state].forEach(function (x) { if (x && x !== nome && resto.indexOf(x) < 0) resto.push(x); });
+    return { nome: nome, sub: resto.join(' · ') };
+  }
+  function autocompletar(campo, caixa, grava) {
+    var tm, tk = 0;
+    campo.addEventListener('input', function () {
+      grava(null); clearTimeout(tm);
+      var q = campo.value.trim(); if (q.length < 3) { caixa.classList.add('oculto'); return; }
+      var meu = ++tk;
+      tm = setTimeout(function () {
+        fetch(BUSCA + '?limit=6&bbox=-74.1,-33.9,-34.7,5.4&q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (j) {
+          if (meu !== tk) return; caixa.innerHTML = '';
+          (j.features || []).forEach(function (f) {
+            var t = textoLugar(f.properties || {}), b = document.createElement('button'); b.type = 'button';
+            b.textContent = t.nome; var sm = document.createElement('small'); sm.textContent = t.sub; b.appendChild(sm);
+            b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            b.addEventListener('click', function () { campo.value = t.nome + (t.sub ? ' · ' + t.sub : ''); caixa.classList.add('oculto'); grava({ lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], nome: t.nome, cidade: t.sub }); });
+            caixa.appendChild(b);
+          });
+          caixa.classList.toggle('oculto', !caixa.children.length);
+        }).catch(function () {});
+      }, 280);
+    });
+    campo.addEventListener('blur', function () { setTimeout(function () { caixa.classList.add('oculto'); }, 150); });
+  }
+  autocompletar($('#o-origem'), $('#s-origem'), function (x) { F.col = x; calcularRota(); });
+  autocompletar($('#o-destino'), $('#s-destino'), function (x) { F.ent = x; calcularRota(); });
+
+  // ---------- rota de caminhão coleta → entrega, mapa e piso ----------
+  var mapa = null;
+  function decode6(str) { var pts = [], i = 0, la = 0, lo = 0; while (i < str.length) { var r = 0, s = 0, b; do { b = str.charCodeAt(i++) - 63; r |= (b & 31) << s; s += 5; } while (b >= 32); la += r & 1 ? ~(r >> 1) : r >> 1; r = 0; s = 0; do { b = str.charCodeAt(i++) - 63; r |= (b & 31) << s; s += 5; } while (b >= 32); lo += r & 1 ? ~(r >> 1) : r >> 1; pts.push([lo / 1e6, la / 1e6]); } return pts; }
+  function calcularRota() {
+    F.rota = null; atualizarPiso();
+    if (!F.col || !F.ent) { $('#rota-info').textContent = 'Escolha coleta e entrega na lista de sugestões para calcular a rota de caminhão.'; return; }
+    $('#rota-info').textContent = 'Calculando a rota de caminhão…';
+    var corpo = { locations: [{ lat: F.col.lat, lon: F.col.lng }, { lat: F.ent.lat, lon: F.ent.lng }], costing: 'truck', units: 'kilometers' };
+    fetch(ROTAS + '?json=' + encodeURIComponent(JSON.stringify(corpo))).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j.trip) throw new Error();
+      F.rota = { km: j.trip.summary.length, horas: j.trip.summary.time / 3600, pts: decode6(j.trip.legs[0].shape) };
+      $('#rota-info').innerHTML = '';
+      var st = document.createElement('strong'); st.textContent = Math.round(F.rota.km).toLocaleString('pt-BR') + ' km';
+      $('#rota-info').append(st, ' de rota de caminhão · cerca de ' + Math.round(F.rota.horas) + 'h de direção');
+      desenharMapa(); atualizarPiso(); validarDatas();
+    }).catch(function () { $('#rota-info').textContent = 'Não consegui calcular a rota agora. Tente de novo em alguns segundos.'; });
+  }
+  function desenharMapa() {
+    var box = $('#mapa-carga'); if (!window.maplibregl) return; box.classList.remove('oculto');
+    var geo = { type: 'Feature', geometry: { type: 'LineString', coordinates: F.rota.pts } };
+    var b = F.rota.pts.reduce(function (bb, p) { return bb.extend(p); }, new maplibregl.LngLatBounds(F.rota.pts[0], F.rota.pts[0]));
+    if (!mapa) {
+      mapa = new maplibregl.Map({ container: 'mapa-carga', style: 'https://tiles.openfreemap.org/styles/positron', bounds: b, fitBoundsOptions: { padding: 24 }, attributionControl: { compact: true } });
+      mapa.on('load', function () { mapa.addSource('r', { type: 'geojson', data: geo }); mapa.addLayer({ id: 'r', type: 'line', source: 'r', paint: { 'line-color': '#1B6BE0', 'line-width': 4 } }); });
+    } else { if (mapa.getSource('r')) mapa.getSource('r').setData(geo); mapa.fitBounds(b, { padding: 24 }); }
+  }
+  function atualizarPiso() {
+    var box = $('#piso'), tipo = $('#o-tipo').value, eixos = +$('#o-eixos').value;
+    box.innerHTML = '';
+    if (!F.rota) { box.textContent = 'O piso mínimo da ANTT aparece aqui depois da rota.'; preview(); return; }
+    var c = (PISO[tipo] || {})[eixos];
+    if (!c) {
+      box.append('Para este tipo de carga, confira o piso na ');
+      var a = document.createElement('a'); a.href = 'https://calculadorafrete.antt.gov.br'; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'calculadora oficial da ANTT'; box.append(a, '. Distância: ' + Math.round(F.rota.km) + ' km, ' + eixos + ' eixos.');
+      F.piso = null; preview(); return;
+    }
+    var piso = F.rota.km * c[0] + c[1], sug = Math.ceil(piso * 1.1 / 50) * 50;
+    F.piso = piso;
+    var l1 = document.createElement('div'); l1.innerHTML = 'Piso mínimo ANTT: <span class="v"></span>'; l1.querySelector('.v').textContent = brl(piso);
+    var l2 = document.createElement('div'); l2.textContent = 'Sugestão TruckRoute: ' + brl(sug) + ' (piso + 10%)';
+    var bt = document.createElement('button'); bt.type = 'button'; bt.textContent = 'Usar valor sugerido'; bt.addEventListener('click', function () { $('#o-valor').value = sug; atualizarPiso(); });
+    var l3 = document.createElement('div'); l3.style.fontSize = '12.5px'; l3.style.color = 'var(--texto2)';
+    l3.textContent = Math.round(F.rota.km) + ' km × R$ ' + c[0].toFixed(4).replace('.', ',') + ' + R$ ' + c[1].toFixed(2).replace('.', ',') + ' de carga e descarga · ' + PISO.norma + (($('#o-retorno').checked) ? ' · o piso também vale para frete de retorno' : '');
+    box.append(l1, l2, bt, l3);
+    var v = num($('#o-valor').value);
+    if (v != null && v < piso) { var al = document.createElement('div'); al.className = 'alerta'; al.textContent = 'Valor abaixo do piso mínimo: risco de multa e indenização ao transportador.'; box.appendChild(al); }
+    preview();
+  }
+  function validarDatas() {
+    var c = new Date($('#o-dt-col').value).getTime(), e = new Date($('#o-dt-ent').value).getTime();
+    if (!F.rota || isNaN(c) || isNaN(e)) return true;
+    var minimo = c + F.rota.horas * 1.3 * h; // direção + paradas obrigatórias de descanso
+    if (e < minimo) { toast('A entrega está apertada: com descanso, o mínimo é ' + hora(minimo) + '.'); return false; }
+    return true;
+  }
+  ['#o-tipo', '#o-eixos', '#o-retorno', '#o-valor'].forEach(function (s) { $(s).addEventListener('input', atualizarPiso); $(s).addEventListener('change', atualizarPiso); });
+  ['#o-dt-col', '#o-dt-ent'].forEach(function (s) { $(s).addEventListener('change', function () { validarDatas(); preview(); }); });
+  ['#o-carr', '#o-peso', '#o-pgto'].forEach(function (s) { $(s).addEventListener('input', preview); });
+  document.querySelectorAll('.exig input').forEach(function (x) { x.addEventListener('change', preview); });
+
+  function exigencias() { return [].map.call(document.querySelectorAll('.exig input:checked'), function (x) { return x.value; }); }
+  function preview() {
+    var v = num($('#o-valor').value);
+    $('#pv-rota').textContent = ($('#o-retorno').checked ? 'Carga de retorno: ' : 'Carga: ') + (F.col ? F.col.nome : '…') + ' → ' + (F.ent ? F.ent.nome : '…');
+    $('#pv-valor').textContent = v == null ? 'R$ —' : brl(v);
+    $('#pv-info').textContent = $('#o-carr').value + ' · ' + ($('#o-peso').value || '—') + ' t · coleta ' + hora(new Date($('#o-dt-col').value).getTime()) + (F.rota ? ' · ' + Math.round(F.rota.km) + ' km' : '');
+    $('#pv-exig').textContent = [$('#o-pgto').value].concat(exigencias()).join(' · ');
+  }
+
+  // ---------- motoristas compatíveis ----------
+  function compativel(m) {
+    var col = new Date($('#o-dt-col').value).getTime(), peso = num($('#o-peso').value) || 0;
+    return F.col && dist(m.pos, [F.col.lat, F.col.lng]) <= 80 && m.carr === $('#o-carr').value && m.eixos === +$('#o-eixos').value && m.cap >= peso && m.eta <= col;
+  }
   function filtrados() {
     var c = $('#f-cidade').value, k = $('#f-carr').value, cap = +$('#f-cap').value;
     return M.filter(function (m) { return (!c || m.cidade === c) && (!k || m.carr === k) && m.cap >= cap; }).sort(function (a, b) { return a.eta - b.eta; });
   }
-  function td(t, s) { var e = document.createElement('td'); var d = document.createElement('div'); d.textContent = t; d.style.fontWeight = '600'; e.appendChild(d); if (s) { var x = document.createElement('div'); x.className = 's'; x.textContent = s; e.appendChild(x); } return e; }
+  function td(t, s) { var e = document.createElement('td'), d = document.createElement('div'); d.textContent = t; d.style.fontWeight = '600'; e.appendChild(d); if (s) { var x = document.createElement('div'); x.className = 's'; x.textContent = s; e.appendChild(x); } return e; }
   function render() {
     var l = filtrados(), tb = $('#lista'); tb.innerHTML = '';
     $('#k-total').textContent = l.length;
     $('#k-24h').textContent = l.filter(function (m) { return m.eta - Date.now() < 24 * h; }).length;
     $('#k-ofertas').textContent = enviadas;
-    if (!l.length) { var tr = document.createElement('tr'), c = document.createElement('td'); c.colSpan = 6; c.className = 'vazio'; c.textContent = 'Nenhum motorista com esses filtros.'; tr.appendChild(c); tb.appendChild(tr); return; }
+    if (!l.length) { var tr0 = document.createElement('tr'), c0 = document.createElement('td'); c0.colSpan = 6; c0.className = 'vazio'; c0.textContent = 'Nenhum motorista com esses filtros.'; tr0.appendChild(c0); tb.appendChild(tr0); return; }
     l.forEach(function (m) {
       var tr = document.createElement('tr');
       tr.appendChild(td(m.nome, '★ ' + m.nota.toFixed(1).replace('.', ',') + ' · ' + m.viagens + ' viagens'));
       tr.appendChild(td(m.conj, m.carr + ' · até ' + String(m.cap).replace('.', ',') + ' t'));
-      tr.appendChild(td(m.cidade));
+      tr.appendChild(td(m.cidade, F.col ? Math.round(dist(m.pos, [F.col.lat, F.col.lng])) + ' km da coleta' : ''));
       tr.appendChild(td(hora(m.eta), emH(m.eta)));
       tr.appendChild(td(m.volta));
       var a = document.createElement('td');
@@ -171,24 +330,22 @@ td .s{font-size:13px;color:var(--texto2)}
       tr.appendChild(a); tb.appendChild(tr);
     });
   }
-  function preview() {
-    var v = parseFloat(String($('#o-valor').value).replace(/\./g, '').replace(',', '.'));
-    $('#pv-rota').textContent = 'Carga de retorno: ' + $('#o-origem').value + ' → ' + ($('#o-destino').value || '…');
-    $('#pv-valor').textContent = isNaN(v) ? 'R$ —' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
-    $('#pv-info').textContent = $('#o-carr').value + ' · ' + ($('#o-peso').value || '—') + ' t · coleta ' + $('#o-janela').value.toLowerCase();
-  }
   ['#f-cidade', '#f-carr', '#f-cap'].forEach(function (s) { $(s).addEventListener('change', render); });
-  ['#o-origem', '#o-destino', '#o-carr', '#o-peso', '#o-valor', '#o-janela'].forEach(function (s) { $(s).addEventListener('input', preview); });
+
   $('#f-oferta').addEventListener('submit', function (e) {
     e.preventDefault();
-    var peso = parseFloat(String($('#o-peso').value).replace(',', '.')), orig = $('#o-origem').value, carr = $('#o-carr').value;
-    var alvo = M.filter(function (m) { return m.cidade === orig && m.carr === carr && m.cap >= peso && m.eta - Date.now() < 48 * h; });
-    if (!alvo.length) { toast('Nenhum motorista compatível chegando em ' + orig + ' nas próximas 48h.'); return; }
+    if (!F.col || !F.ent) { toast('Escolha a coleta e a entrega na lista de sugestões.'); return; }
+    if (!F.rota) { toast('Aguarde o cálculo da rota.'); return; }
+    var v = num($('#o-valor').value);
+    if (F.piso && v < F.piso) { toast('O valor está abaixo do piso mínimo da ANTT (' + brl(F.piso) + '). Ajuste antes de enviar.'); return; }
+    if (!validarDatas()) return;
+    var alvo = M.filter(compativel);
+    if (!alvo.length) { toast('Nenhum motorista compatível chegando perto da coleta antes do horário marcado.'); return; }
     alvo.forEach(function (m) { m.status = 'Oferta enviada'; });
-    enviadas += alvo.length;
-    $('#f-cidade').value = orig; $('#f-carr').value = carr; render();
+    enviadas += alvo.length; $('#f-cidade').value = ''; $('#f-carr').value = ''; render();
     toast('Oferta enviada para ' + alvo.length + ' motorista(s) compatível(is).');
-    var prefere = alvo.filter(function (m) { return $('#o-destino').value && m.volta.toLowerCase().indexOf($('#o-destino').value.toLowerCase().split(' ')[0]) >= 0; })[0] || alvo[0];
+    var dest = (F.ent.nome + ' ' + F.ent.cidade).toLowerCase();
+    var prefere = alvo.filter(function (m) { return dest.indexOf(m.volta.toLowerCase().split(' ')[0]) >= 0; })[0] || alvo[0];
     setTimeout(function () { prefere.status = 'Aceitou'; render(); toast(prefere.nome + ' aceitou a carga. Contato liberado.'); }, 3500);
   });
   preview(); render();
